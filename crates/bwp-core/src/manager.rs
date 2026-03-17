@@ -13,6 +13,9 @@ use notify::{Event, RecursiveMode, Watcher};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::mpsc;
+use std::fs::OpenOptions;
+use fs2::FileExt;
+use std::io::{Seek, Write};
 use tracing::{error, info, warn};
 
 /// Thread-safe, lock-free configuration registry.
@@ -67,6 +70,43 @@ impl ConfigManager {
         })?;
 
         Ok(config)
+    }
+
+    /// Loads the current configuration from disk, applies the given closure to modify it,
+    /// and writes the changes back to disk. This triggers the hot-reload task.
+    pub fn update_config<F>(&self, modifier: F) -> BwpResult<()>
+    where
+        F: FnOnce(&mut AppConfig),
+    {
+        let mut file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .open(&self.config_path)
+            .map_err(BwpError::Io)?;
+
+        file.lock_exclusive().map_err(BwpError::Io)?;
+
+        // Read the config safely by reading from the already opened locked file.
+        use std::io::Read;
+        let mut content = String::new();
+        file.read_to_string(&mut content).map_err(BwpError::Io)?;
+
+        let mut config: AppConfig = toml::from_str(&content).map_err(|e| {
+            BwpError::Config(format!("Invalid TOML in {}: {}", self.config_path.display(), e))
+        })?;
+
+        modifier(&mut config);
+
+        let new_content = toml::to_string_pretty(&config)
+            .map_err(|e| BwpError::Config(format!("Failed to serialize config: {}", e)))?;
+
+        file.set_len(0).map_err(BwpError::Io)?;
+        file.rewind().map_err(BwpError::Io)?;
+        file.write_all(new_content.as_bytes()).map_err(BwpError::Io)?;
+
+        file.unlock().map_err(BwpError::Io)?;
+        Ok(())
     }
 
     /// Returns a shared pointer to the `ArcSwap` representing the current configuration.
