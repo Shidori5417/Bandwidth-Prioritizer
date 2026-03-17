@@ -12,7 +12,9 @@ bwp-core = { workspace = true }
 bwp-monitor = { workspace = true }
 bwp-controller = { workspace = true }
 thiserror = { workspace = true }
+anyhow = { workspace = true }
 tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
 tokio = { workspace = true }
 dashmap = "5"
 

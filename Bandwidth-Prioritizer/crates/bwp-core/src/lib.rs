@@ -15,6 +15,7 @@ pub mod manager;
 pub mod error;
 pub mod types;
 pub mod ipc;
+pub mod pid;
 
 pub use config::AppConfig;
 pub use manager::ConfigManager;

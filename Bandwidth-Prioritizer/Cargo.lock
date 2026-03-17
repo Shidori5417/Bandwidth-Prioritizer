@@ -114,6 +114,7 @@ dependencies = [
  "bwp-controller",
  "bwp-core",
  "bwp-monitor",
+ "cfg-if",
  "clap",
  "crossterm",
  "ratatui",
@@ -156,6 +157,7 @@ dependencies = [
 name = "bwp-engine"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "bwp-controller",
  "bwp-core",
  "bwp-monitor",
@@ -163,6 +165,7 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

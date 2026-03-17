@@ -52,11 +52,17 @@ enum CliCommand {
         app: String,
     },
     
-    /// Remove an application from the priority whitelist dynamically.
     Remove {
         /// Process name to remove.
         app: String,
     },
+}
+
+cfg_if::cfg_if! {
+    if #[cfg(target_os = "windows")] {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+    }
 }
 
 #[tokio::main]
@@ -71,13 +77,50 @@ async fn main() -> Result<()> {
 
     match args.command {
         CliCommand::Start => {
-            println!("🚀 Starting bwp-engine daemon...");
-            // TODO: Use std::process::Command to spawn engine binary and detach.
-            println!("(Daemon spawn logic to be implemented. Currently, please run the engine manually.)");
+            if let Ok(Some(pid)) = bwp_core::pid::read_pid() {
+                if bwp_core::pid::is_process_running(pid) {
+                    println!("Engine is already running (PID: {})", pid);
+                    return Ok(());
+                } else {
+                    println!("Found stale PID file. Starting fresh engine...");
+                }
+            } else {
+                println!("🚀 Starting bwp-engine daemon...");
+            }
+
+            let mut command = std::process::Command::new("bwp-engine");
+            command.stdin(std::process::Stdio::null())
+                   .stdout(std::process::Stdio::null())
+                   .stderr(std::process::Stdio::null());
+
+            #[cfg(target_os = "windows")]
+            command.creation_flags(CREATE_NO_WINDOW);
+
+            match command.spawn() {
+                Ok(child) => {
+                    println!("✅ Daemon spawned successfully (PID: {}).", child.id());
+                }
+                Err(e) => {
+                    println!("❌ Failed to spawn daemon: {}", e);
+                    println!("Make sure 'bwp-engine.exe' is in your PATH or current directory.");
+                }
+            }
         }
         CliCommand::Stop => {
-            send_ipc_and_print(IpcCommand::Stop).await?;
-            println!("🛑 Daemon stop command sent.");
+            println!("🛑 Sending stop command to engine...");
+            match send_ipc_and_print(IpcCommand::Stop).await {
+                Ok(_) => {
+                    bwp_core::pid::remove_pid().unwrap_or(());
+                }
+                Err(_) => {
+                    if let Ok(Some(pid)) = bwp_core::pid::read_pid() {
+                        println!("Could not connect to stop gracefully. You may need to manually kill PID {}.", pid);
+                        bwp_core::pid::remove_pid().unwrap_or(());
+                    } else {
+                        println!("Engine does not appear to be running.");
+                    }
+                }
+            }
         }
         CliCommand::Status => {
             println!("📊 Querying engine status...");
