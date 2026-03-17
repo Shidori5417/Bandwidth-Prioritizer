@@ -76,6 +76,85 @@ impl ConfigManager {
         self.current.clone()
     }
 
+    /// Adds an app to the `critical_apps` list and saves the config to disk.
+    pub fn add_app(&self, app: &str) -> BwpResult<()> {
+        let content = std::fs::read_to_string(&self.config_path).map_err(|e| {
+            BwpError::Config(format!("Could not read config file: {e}"))
+        })?;
+
+        let mut doc = content.parse::<toml_edit::DocumentMut>().map_err(|e| {
+            BwpError::Config(format!("Could not parse config file: {e}"))
+        })?;
+
+        let apps = match doc.get_mut("critical_apps") {
+            Some(v) if v.is_array() => v.as_array_mut().unwrap(),
+            Some(_) => {
+                return Err(BwpError::Config(
+                    "'critical_apps' exists but is not an array".to_string(),
+                ));
+            }
+            None => {
+                let arr = toml_edit::Array::default();
+                doc.insert("critical_apps", toml_edit::Item::Value(toml_edit::Value::Array(arr)));
+                doc.get_mut("critical_apps").unwrap().as_array_mut().unwrap()
+            }
+        };
+
+        let exists = apps.iter().any(|v| v.as_str() == Some(app));
+        if !exists {
+            apps.push(app);
+        }
+
+        std::fs::write(&self.config_path, doc.to_string()).map_err(|e| {
+            BwpError::Config(format!("Could not write config file: {e}"))
+        })?;
+
+        Ok(())
+    }
+
+    /// Removes an app from the `critical_apps` list and saves the config to disk.
+    pub fn remove_app(&self, app: &str) -> BwpResult<()> {
+        let content = std::fs::read_to_string(&self.config_path).map_err(|e| {
+            BwpError::Config(format!("Could not read config file: {e}"))
+        })?;
+
+        let mut doc = content.parse::<toml_edit::DocumentMut>().map_err(|e| {
+            BwpError::Config(format!("Could not parse config file: {e}"))
+        })?;
+
+        let apps = match doc.get_mut("critical_apps") {
+            Some(v) if v.is_array() => v.as_array_mut().unwrap(),
+            Some(_) => {
+                return Err(BwpError::Config(
+                    "'critical_apps' exists but is not an array".to_string(),
+                ));
+            }
+            None => {
+                return Err(BwpError::Config(
+                    "'critical_apps' array not found in config".to_string(),
+                ));
+            }
+        };
+
+        let mut indices_to_remove = Vec::new();
+        for (i, v) in apps.iter().enumerate() {
+            if v.as_str() == Some(app) {
+                indices_to_remove.push(i);
+            }
+        }
+
+        // Remove from the end to avoid index shifting
+        for i in indices_to_remove.into_iter().rev() {
+            let _ = apps.remove(i);
+        }
+
+        std::fs::write(&self.config_path, doc.to_string()).map_err(|e| {
+            BwpError::Config(format!("Could not write config file: {e}"))
+        })?;
+
+        Ok(())
+    }
+
     /// Spawns an asynchronous hot-reload watcher.
     ///
     /// The `notify` crate will listen for filesystem changes. Upon modification,

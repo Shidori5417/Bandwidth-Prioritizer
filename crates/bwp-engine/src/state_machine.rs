@@ -115,13 +115,17 @@ impl<C: TrafficController + 'static> Engine<C> {
                 // To be implemented: Reloading ArcSwap dynamically over IPC
                 IpcResponse::Ok
             }
-            IpcCommand::AddApp(_app) => {
-                // Config mutation will be added
-                IpcResponse::Ok
+            IpcCommand::AddApp(app) => {
+                match self.config_manager.add_app(&app) {
+                    Ok(_) => IpcResponse::Ok,
+                    Err(e) => IpcResponse::Error(e.to_string()),
+                }
             }
-            IpcCommand::RemoveApp(_app) => {
-                // Config mutation will be added
-                IpcResponse::Ok
+            IpcCommand::RemoveApp(app) => {
+                match self.config_manager.remove_app(&app) {
+                    Ok(_) => IpcResponse::Ok,
+                    Err(e) => IpcResponse::Error(e.to_string()),
+                }
             }
             IpcCommand::Stop => {
                 warn!("Received Stop command. Shutting down throttle engine.");
