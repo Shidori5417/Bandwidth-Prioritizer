@@ -1,209 +1,107 @@
-# Bandwidth-Prioritizer — Agents
+# Project Overview
+- **What the system does**: System-level network traffic shaper that dynamically throttles non-critical applications when priority apps are active.
+- **Target users**: Users experiencing network contention during critical tasks (e.g., Discord calls, Zoom meetings, gaming).
+- **Core problem it solves**: Background downloads tanking connection quality; existing solutions require manual intervention or expensive commercial software.
+- **Main functional domains**: Process/network monitoring, Traffic shaping/throttling, Configuration management, IPC and CLI/TUI interfacing.
 
-Bu dosya, projeyi geliştiren AI agent'larının sorumluluklarını, çalışma kurallarını ve birbirleriyle koordinasyon protokollerini tanımlar.
+# Tech Stack
+- **Languages**: Rust (edition 2024, version >= 1.85)
+- **Frameworks**:
+  - Tokio (Async runtime)
+  - Clap (CLI parsing)
+  - Ratatui / Crossterm (TUI dashboard)
+- **Runtime**: Native binary (Windows/Linux)
+- **Tooling**: Cargo, rustfmt, clippy
+- **Infrastructure**: Native OS networking APIs (WinDivert on Windows, tc on Linux)
+- **Database**: None (state is held in memory, config in TOML)
+- **State management**: `DashMap` for lock-free caching, `ArcSwap` for zero-cost config hot-reloading.
+- **UI libraries**: Ratatui for TUI.
 
----
-
-## Agent Listesi
-
-### 🤖 Agent 1 — `architect`
-**Rol:** Sistem mimarisi & teknik karar verici
-
-**Sorumluluklar:**
-- Rust crate yapısını ve modül sınırlarını belirler
-- Platform farklılıklarını (Linux eBPF vs Windows WFP) yönetir
-- Performans hedeflerini (CPU, RAM limitleri) tanımlar
-- Diğer agentların ürettiği kodu mimari açıdan gözden geçirir
-- `progress.md`'yi günceller (faz geçişlerinde)
-
-**Çalışma Kuralları:**
-- Her teknik karar için `# KARAR:` başlıklı bir not bırakır
-- Breaking change içeren değişiklikleri önce diğer agentlara bildirir
-- Trait boundary'leri ve public API'leri yalnızca bu agent değiştirir
-
-**Çıktı Formatı:**
+# Project Structure
 ```
-[architect] <karar veya değişiklik özeti>
-Etkilenen crate'ler: <liste>
-Gerekçe: <kısa açıklama>
+.
+├── Cargo.toml            # Workspace configuration
+├── config.toml           # Default configuration file
+├── crates/
+│   ├── bwp-cli/          # CLI and TUI frontend
+│   ├── bwp-controller/   # Traffic shaping engine (WinDivert on Windows, tc on Linux)
+│   │   └── build.rs      # WinDivert.dll copy automation on build
+│   ├── bwp-core/         # Shared types, error handling, config models, PID lifecycle
+│   ├── bwp-engine/       # Central state machine, orchestration, IPC server
+│   └── bwp-monitor/      # Process & network connection monitoring
+└── README.md             # Project documentation
 ```
+- **bwp-core**: Holds `AppConfig`, lock-free `ConfigManager`, IPC commands, error hierarchy.
+- **bwp-monitor**: Traits and implementations for detecting active processes and network connections.
+- **bwp-controller**: Abstract `TrafficController` and `ThrottleCommand`, with OS-specific implementations (e.g., WinDivert on Windows, tc on Linux).
+- **bwp-engine**: Orchestrates the system. `Engine` handles events from `bwp-monitor` and applies limits via `bwp-controller`. Also hosts the IPC server.
+- **bwp-cli**: The user interface. Sends IPC commands to the daemon. Contains the `ratatui` UI.
 
----
+# Architecture
+- **System design pattern**: Modular / Clean Architecture with a decoupled background daemon and frontend CLI/TUI.
+- **Data flow**:
+  - Monitor -> Engine: Network events (ConnectionOpened, ConnectionClosed) flow into the Engine's MPSC channel.
+  - Config file -> Engine: Hot-reloaded `AppConfig` via `notify` and `ArcSwap`.
+- **State flow**:
+  - Engine maintains `priority_pids`, `normal_pids`, and `ThrottleState` (Normal, PriorityMode).
+  - Updates occur based on network events and config matching.
+- **API flow**:
+  - CLI -> IPC Client -> IPC Server -> Engine -> IPC Response.
+  - TUI pulls `StatusPayload` periodically over IPC (`bwp top`).
+- **Separation of concerns**:
+  - `bwp-monitor` only observes.
+  - `bwp-controller` only enforces limits.
+  - `bwp-engine` makes decisions.
+  - `bwp-cli` handles user interaction (CLI actions, Daemon start/stop, Ratatui Dashboard).
+  - `bwp-core` provides common types and IPC contracts.
 
-### 🤖 Agent 2 — `monitor-agent`
-**Rol:** Süreç & ağ izleme katmanı geliştirici
+# Key Conventions
+- **Naming rules**: Standard Rust conventions (`snake_case` for variables/functions, `CamelCase` for structs/enums).
+- **Folder conventions**: Workspace model with logic split into `crates/*`.
+- **File suffix rules**: `.rs` for Rust, `.toml` for config.
+- **Component patterns**: Heavy use of Traits for OS-specific implementations (e.g., `ProcessMonitor`, `TrafficController`).
+- **Error handling patterns**: `thiserror` for library error types, `anyhow` for application-level error context in binaries. `BwpResult<T>` alias.
+- **Dependency boundaries**: Frontend crates (`bwp-cli`) only depend on `bwp-core` (for IPC), never directly on engine logic or low-level monitors. Engine depends on core, monitor, and controller.
 
-**Sorumluluklar:**
-- `monitor` crate'ini geliştirir
-- Linux `/proc` dosya sistemi okuma işlemlerini yazar
-- Windows `GetExtendedTcpTable` WinAPI bağlantısını kurar
-- PID → process name eşleştirme mantığını implement eder
-- Polling döngüsünü ve event yayma sistemini yönetir
+# Important Files
+- **Entry points**:
+  - `crates/bwp-cli/src/main.rs` (CLI/TUI binary, spawns daemon)
+  - `crates/bwp-engine/src/main.rs` (Daemon binary)
+- **Bootstrapping logic**: 
+  - `bwp start` spawns `bwp-engine.exe` in the background (detached), locates binary next to CLI, and engine writes its PID file securely to OS specific temp directory (`%LOCALAPPDATA%\bwp\bwp.pid` or `/var/run/`).
+  - `bwp stop` attempts graceful Named Pipe shutdown first, falling back to forceful PID cleanup.
+- **Environment config**: `config.toml` loaded by `ConfigManager`.
+- **Core services**: `crates/bwp-engine/src/state_machine.rs` (`Engine::run_event_loop`).
+- **Domain logic**: `crates/bwp-core/src/config.rs` (`AppConfig::effective_throttle_limit`), `crates/bwp-engine/src/state_machine.rs` (State transitions).
 
-**Çalışma Kuralları:**
-- Platform-spesifik kod `#[cfg(target_os = "...")]` ile ayrılmalı
-- Polling interval değişkeni hardcode edilemez, config'den okunmalı
-- Her public fonksiyon için `rustdoc` yorumu zorunlu
-- Üretilen veri yapıları `serde::Serialize` implement etmeli (log/debug için)
+# Dependencies
+- **tokio**: Async runtime for event loops, IPC, and concurrent tasks. Removing it breaks all async logic.
+- **serde / toml**: Serialization and parsing for `config.toml`. Removing breaks configuration.
+- **clap**: CLI argument parsing. Removing breaks the CLI interface.
+- **ratatui / crossterm**: TUI dashboard rendering. Removing breaks the `top` command.
+- **dashmap**: Lock-free concurrent hash map for caching PID to Executable Name. Removing degrades performance/concurrency in the engine.
+- **arc-swap**: Atomic lock-free pointer swapping for hot-reloading configuration. Removing requires locks (RwLock/Mutex) leading to contention in fast-paths.
+- **notify**: File system watching for hot-reloading `config.toml`. Removing breaks dynamic config updates.
+- **windows**: Native Windows APIs for WinDivert, ETW, process management. Removing breaks Windows support.
 
-**Bağımlı Olduğu Agentlar:** `architect` (veri yapısı onayı için)
+# Development Workflow
+- **Install**: Rust >= 1.85.
+- **Dev mode**: `cargo run --bin bwp -- start --foreground`
+- **Build**: `cargo build --workspace`
+- **Test**: `cargo test --workspace`
+- **Lint**: `cargo clippy --workspace --all-targets -- -D warnings`
+- **Format**: `cargo fmt --all`
+- **Deployment steps**: Compile release binaries (`cargo build --release`), require Administrator/root privileges to run the daemon.
 
-**Çıktı Formatı:**
-```
-[monitor-agent] <implement edilen özellik>
-Platform: <Linux | Windows | Cross-platform>
-Test durumu: <unit | integration | none>
-```
+# Do NOT Section
+- **Files that must never be edited**: Avoid modifying `Cargo.lock` directly.
+- **Generated files**: Build artifacts in `target/`.
+- **Build artifacts**: `target/` directory.
+- **Architectural boundaries that must not be violated**: `bwp-cli` must not directly invoke `bwp-controller` or `bwp-engine` functions; all communication must go through IPC. `bwp-engine` must not perform UI rendering.
 
----
-
-### 🤖 Agent 3 — `controller-agent`
-**Rol:** Trafik kontrolcüsü & throttle motoru geliştirici
-
-**Sorumluluklar:**
-- `controller` crate'ini geliştirir
-- Linux tarafında `tc`/eBPF komutlarını programatik olarak çalıştırır
-- Windows tarafında WFP API çağrılarını yönetir
-- Token Bucket algoritmasını implement eder
-- PID bazlı kural ekleme/kaldırma API'sini yazar
-- `monitor-agent`'dan gelen olayları dinler ve kısıtlama kararları verir
-
-**Çalışma Kuralları:**
-- Kernel/sistem çağrıları `unsafe` bloğa alınmalı ve gerekçelendirilmeli
-- Her kısıtlama işlemi atomik olmalı (yarım bırakılan kural olmamalı)
-- Graceful rollback: hata durumunda sistem orijinal haline döndürülmeli
-- Throttle değerleri `u32` (Kbps cinsinden) olarak temsil edilmeli
-
-**Bağımlı Olduğu Agentlar:** `architect` (API sözleşmesi), `monitor-agent` (olay akışı)
-
-**Çıktı Formatı:**
-```
-[controller-agent] <implement edilen özellik>
-Platform: <Linux | Windows | Cross-platform>
-Güvenlik notu: <unsafe kullanımı varsa gerekçe>
-```
-
----
-
-### 🤖 Agent 4 — `config-agent`
-**Rol:** Konfigürasyon sistemi geliştirici
-
-**Sorumluluklar:**
-- `config.toml` şemasını tasarlar ve `serde` struct'larını yazar
-- Hot-reload mekanizmasını (`notify` crate) implement eder
-- Profil sistemi (Gaming, Meeting, Download) mantığını kurar
-- Config doğrulama ve hata mesajlarını geliştirir
-- Varsayılan değerlerin mantıklı ve güvenli olmasını sağlar
-
-**Çalışma Kuralları:**
-- Config değişiklikleri geri alınabilir olmalı (önceki geçerli state saklanmalı)
-- Kullanıcıya gösterilen hata mesajları teknik jargon içermemeli
-- Tüm config alanları için `/// doc comment` zorunlu
-- Şema değişikliği, migration notunu `progress.md`'ye gerektirir
-
-**Bağımlı Olduğu Agentlar:** `architect` (şema onayı)
-
-**Çıktı Formatı:**
-```
-[config-agent] <implement edilen özellik>
-Şema değişikliği: <Evet / Hayır>
-Migration gerekli: <Evet / Hayır>
-```
-
----
-
-### 🤖 Agent 5 — `cli-agent`
-**Rol:** CLI & TUI arayüzü geliştirici
-
-**Sorumluluklar:**
-- `cli` crate'ini geliştirir
-- `clap` ile komut satırı arayüzünü tasarlar
-- `ratatui` ile gerçek zamanlı terminal dashboard'unu yazar
-- Daemon ile IPC iletişimini (Unix socket / named pipe) sağlar
-- Kullanıcı deneyimini (UX) önceliklendirir: net hata mesajları, yardım metinleri
-
-**Çalışma Kuralları:**
-- Her `clap` komutu için `about` ve `long_about` doldurulmalı
-- TUI render döngüsü 60fps altında kalmalı (16ms frame budget)
-- Renk şeması terminal temasına uyumlu olmalı (`NO_COLOR` standardını destekle)
-- IPC mesaj formatı `serde_json` ile serileştirilmeli
-
-**Bağımlı Olduğu Agentlar:** `architect` (IPC protokolü), `config-agent` (profil listesi)
-
-**Çıktı Formatı:**
-```
-[cli-agent] <implement edilen özellik>
-Kullanıcı aksiyonu: <komut veya UI öğesi>
-IPC kullanımı: <Evet / Hayır>
-```
-
----
-
-### 🤖 Agent 6 — `test-agent`
-**Rol:** Test & kalite güvencesi
-
-**Sorumluluklar:**
-- Tüm crate'ler için unit test coverage'ı artırır
-- Entegrasyon testleri yazar (sanal ağ arayüzü ile)
-- Fuzzing senaryoları hazırlar (config parsing, IPC mesajları)
-- Performans benchmark'larını çalıştırır (`criterion`)
-- CI pipeline'ında test başarısızlıklarını analiz eder ve raporlar
-
-**Çalışma Kuralları:**
-- Test fonksiyon isimleri `test_<birim>_<senaryo>_<beklenen_sonuç>` formatında olmalı
-- Her Faz tamamlandığında ilgili entegrasyon testini çalıştırır
-- Kırılan test, ilgili agent'a `[test-agent] FAIL:` prefix'iyle bildirilir
-- Coverage hedefi: `%80` ve üzeri (kritik path'ler için `%100`)
-
-**Bağımlı Olduğu Agentlar:** Tüm agentlar (tüketici rolünde)
-
-**Çıktı Formatı:**
-```
-[test-agent] <test suite adı>
-Geçen: <N> | Başarısız: <N> | Atlanan: <N>
-Coverage: <%>
-Kritik başarısızlık: <varsa açıklama>
-```
-
----
-
-## Koordinasyon Protokolü
-
-### Faz Geçişi
-1. `architect` mevcut fazın tamamlandığını onaylar
-2. `progress.md` güncellenir
-3. Sonraki fazın bağımlılıkları kontrol edilir
-4. İlgili agentlar bilgilendirilir
-
-### Çakışma Çözümü
-- İki agent aynı modülü değiştirmek isterse → `architect` karar verir
-- API sözleşmesi değişikliği → tüm bağımlı agentların onayı gerekir
-- Güvenlik/unsafe kod → `architect` + `test-agent` ortak incelemesi
-
-### İletişim Kanalları
-| Durum | Yöntem |
-|---|---|
-| Rutin güncelleme | `progress.md` commit notu |
-| Blokaj / bekleyen karar | `agents.md` altına `## Açık Sorular` bölümü |
-| Kritik hata | Kod içi `// FIXME [agent-adı]:` etiketi |
-| Mimari değişiklik | `architect`'e direkt bildirim + `progress.md` notu |
-
----
-
-## Açık Sorular
-
-> *(Agentlar buraya çözüme kavuşturulmamış soruları ekler)*
-
-| # | Soru | Soran Agent | Durum |
-|---|---|---|---|
-| 1 | Linux'ta eBPF mi yoksa `tc` komutu mu öncelikli olmalı? | `architect` | 🔲 Açık |
-| 2 | Windows'ta WFP için kernel driver gerekiyor mu, user-space yeterli mi? | `controller-agent` | 🔲 Açık |
-| 3 | IPC için Unix socket mu, yoksa gRPC mi daha uygun? | `cli-agent` | 🔲 Açık |
-
----
-
-## Kural Dışı Durumlar
-
-- Hiçbir agent `progress.md`'yi `architect`'in onayı olmadan `%100 tamamlandı` olarak işaretleyemez
-- `unsafe` kod `test-agent`'ın incelemesi olmadan merge edilemez
-- Config şema değişiklikleri geriye dönük uyumlu olmak zorundadır (v1.0.0'a kadar)
+# Task Execution Rules
+- When given a task, do NOT re-explore the project
+- Trust this `AGENTS.md` as the single source of truth
+- Only modify relevant modules
+- Do not refactor unrelated parts
+- Do not change architecture without explicit instruction
