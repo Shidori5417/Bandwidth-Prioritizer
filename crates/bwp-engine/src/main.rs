@@ -10,12 +10,48 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 use tracing::{info, error};
 
-#[tokio::main]
-async fn main() -> Result<()> {
+mod service;
+
+fn main() -> Result<()> {
     tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .with_env_filter(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")))
         .init();
 
+    let mut args = std::env::args();
+    let _ = args.next(); // skip binary name
+    
+    // Internal hack: when service gets `Stop`, it calls its own binary with `--internal-stop`
+    // to trigger graceful IPC shutdown.
+    if let Some(arg) = args.next() {
+        if arg == "--internal-stop" {
+            // Spawn a dummy tokio to send the stop IPC signal
+            let rt = tokio::runtime::Runtime::new()?;
+            rt.block_on(async {
+                if let Ok(mut conn) = bwp_core::ipc::windows::connect_client().await {
+                    let _ = conn.send_command(&bwp_core::ipc::IpcCommand::Stop).await;
+                }
+            });
+            return Ok(());
+        } else if arg == "--service" {
+            #[cfg(target_os = "windows")]
+            {
+                info!("Starting as Windows Service...");
+                return service::run_as_service();
+            }
+            #[cfg(not(target_os = "windows"))]
+            {
+                return Err(anyhow::anyhow!("Service mode only supported on Windows"));
+            }
+        }
+    }
+
+    // Default mode: run normally in console
+    info!("Starting bwp-engine core locally...");
+    run_engine_core()
+}
+
+#[tokio::main]
+pub async fn run_engine_core() -> Result<()> {
     info!("Starting Bandwidth-Prioritizer Engine Daemon...");
 
     // Write PID file

@@ -26,5 +26,8 @@ tokio = { workspace = true }
 anyhow = { workspace = true }
 cfg-if = "1"
 
+[target.'cfg(windows)'.dependencies]
+windows-service = { workspace = true }
+
 [lints]
 workspace = true

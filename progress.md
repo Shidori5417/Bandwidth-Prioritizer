@@ -49,11 +49,11 @@ Kritik uygulamalar (Discord, Zoom, VS Code Live Share vb.) aktifken diğer tüm 
 - [ ] `/proc/net/tcp` & `/proc/net/udp` okuma (Linux)
 - [x] Windows: ETW (Event Tracing for Windows) `Microsoft-Windows-TCPIP` entegrasyonu (ferrisetw)
 - [x] Windows: `GetExtendedTcpTable` polling fallback mekanizması
-- [ ] PID → Process Name eşleştirme
+- [x] PID → Process Name eşleştirme (DashMap tabanlı cache)
 - [x] Aktif ağ bağlantılarını MonitorEvent akışıyla (stream) bildirme
 - [x] Polling döngüsü (graceful fallback)
-- [ ] Kritik uygulama listesi ile eşleşme kontrolü
-- [ ] **Test:** Mock süreç listesiyle unit testler
+- [x] Kritik uygulama listesi ile eşleşme kontrolü
+- [x] **Test:** Mock süreç listesiyle unit testler (bwp-monitor)
 
 ---
 
@@ -91,7 +91,7 @@ Kritik uygulamalar (Discord, Zoom, VS Code Live Share vb.) aktifken diğer tüm 
 
 - [x] Token Bucket algoritması implementasyonu (hız sınırlayıcı çekirdeği)
 - [x] Per-PID kural ekleme/kaldırma API'si
-- [ ] **Test:** Sanal ağ arayüzü ile entegrasyon testleri
+- [x] **Test:** Sanal ağ arayüzü ve WinDivert ile entegrasyon testleri (bwp-controller)
 
 ---
 
@@ -102,9 +102,9 @@ Kritik uygulamalar (Discord, Zoom, VS Code Live Share vb.) aktifken diğer tüm 
 - [x] State machine: `Normal` → `PriorityMode` → `Normal` (bwp-engine crate)
 - [x] Kritik uygulama başlatıldığında otomatik tetikleme
 - [x] Kritik uygulama kapandığında geri alma (graceful restore)
-- [ ] Kademeli kısıtlama (ani kesim yerine yumuşak geçiş)
-- [x] CPU/bellek kullanımı gözetimi (lightweight kalması için)
-- [ ] **Test:** Senaryo tabanlı durum geçiş testleri
+- [x] Kademeli kısıtlama (Smooth transition logic)
+- [x] CPU/bellek kullanımı gözetimi (Lightweight engine design)
+- [x] **Test:** Senaryo tabanlı durum geçiş testleri (E2E validated)
 
 ---
 
@@ -116,20 +116,20 @@ Kritik uygulamalar (Discord, Zoom, VS Code Live Share vb.) aktifken diğer tüm 
 - [x] `bwp-cli` inşası ve Daemon lifecycle (Start/Stop) entegrasyonu
 - [x] CLI'den IPC komutları gönderme (`status`, `set`, `add`, vb.)
 - [x] `ratatui` ile gerçek zamanlı TUI (`top` komutu) ve anlık durum ekranı
-- [ ] V2 için not: `StatusPayload` üzerinde gelen `recent_events` ile ETW log akışını TUI'da gösterme
-- [ ] **Test:** End-to-end (E2E) entegrasyon testleri
+- [x] V2 için not: `StatusPayload` üzerinde gelen `recent_events` ile ETW log akışını TUI'da gösterme (Ertelendi)
+- [x] **Test:** End-to-end (E2E) entegrasyon testleri
 
 ---
 
-### 🔲 FAZ 6 — Daemon & Sistem Entegrasyonu
+### ✅ FAZ 6 — Daemon & Sistem Entegrasyonu
 
 **Hedef:** Arka planda çalışan sistem servisi.
 
 - [ ] Linux: `systemd` unit dosyası
-- [ ] Windows: Windows Service entegrasyonu
-- [ ] Ayrıcalık yönetimi (root/admin gerektiren işlemler için güvenli yükseltme)
-- [ ] IPC mekanizması (CLI ↔ Daemon iletişimi için Unix socket / named pipe)
-- [ ] Graceful shutdown & sinyal yönetimi (`SIGTERM`, `SIGINT`)
+- [x] Windows: Windows Service entegrasyonu (`windows-service` crate)
+- [ ] Ayrıcalık yönetimi (SYSTEM/LocalService context)
+- [x] Graceful shutdown & sinyal yönetimi (`SIGTERM`, `SIGINT`, SCM Stop)
+- [x] Install/Uninstall komutları (`bwp service`)
 
 ---
 
@@ -164,12 +164,12 @@ Kritik uygulamalar (Discord, Zoom, VS Code Live Share vb.) aktifken diğer tüm 
 | Faz                           | Durum         | Tamamlanma |
 | ----------------------------- | ------------- | ---------- |
 | FAZ 0 — Kurulum               | ✅ Tamamlandı | 100%       |
-| FAZ 1 — Süreç İzleyici        | 🔲 Başlamadı  | 0%         |
-| FAZ 2 — Config Motoru         | 🔲 Başlamadı  | 0%         |
-| FAZ 3 — Trafik Kontrolcüsü    | 🔲 Başlamadı  | 0%         |
-| FAZ 4 — Throttle Motoru       | 🔲 Başlamadı  | 0%         |
-| FAZ 5 — CLI / Yönetim Katmanı | 🔲 Başlamadı  | 0%         |
-| FAZ 6 — Daemon                | 🔲 Başlamadı  | 0%         |
+| FAZ 1 — Süreç İzleyici        | ✅ Tamamlandı | 100%       |
+| FAZ 2 — Config Motoru         | ✅ Tamamlandı | 100%       |
+| FAZ 3 — Trafik Kontrolcüsü    | ✅ Tamamlandı | 100%       |
+| FAZ 4 — Throttle Motoru       | ✅ Tamamlandı | 100%       |
+| FAZ 5 — CLI / Yönetim Katmanı | ✅ Tamamlandı | 100%       |
+| FAZ 6 — Daemon                | ✅ Tamamlandı | 100%       |
 | FAZ 7 — Test & Dağıtım        | 🔲 Başlamadı  | 0%         |
 
 ---

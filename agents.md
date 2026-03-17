@@ -35,7 +35,7 @@
 - **bwp-monitor**: Traits and implementations for detecting active processes and network connections.
 - **bwp-controller**: Abstract `TrafficController` and `ThrottleCommand`, with OS-specific implementations (e.g., WinDivert on Windows, tc on Linux).
 - **bwp-engine**: Orchestrates the system. `Engine` handles events from `bwp-monitor` and applies limits via `bwp-controller`. Also hosts the IPC server.
-- **bwp-cli**: The user interface. Sends IPC commands to the daemon. Contains the `ratatui` UI.
+- **bwp-cli**: The user interface. Sends IPC commands to the daemon. Contains the `ratatui` UI and Windows Service installation routines (`bwp service`).
 
 # Architecture
 - **System design pattern**: Modular / Clean Architecture with a decoupled background daemon and frontend CLI/TUI.
@@ -70,6 +70,7 @@
 - **Bootstrapping logic**: 
   - `bwp start` spawns `bwp-engine.exe` in the background (detached), locates binary next to CLI, and engine writes its PID file securely to OS specific temp directory (`%LOCALAPPDATA%\bwp\bwp.pid` or `/var/run/`).
   - `bwp stop` attempts graceful Named Pipe shutdown first, falling back to forceful PID cleanup.
+  - Phase 6 (Windows Service): Users can run `bwp service install` (as Admin) to register `bwp-engine.exe --service` with the Service Control Manager. The engine will bridge SCM events to `EngineEvent::Stop` for graceful teardown.
 - **Environment config**: `config.toml` loaded by `ConfigManager`.
 - **Core services**: `crates/bwp-engine/src/state_machine.rs` (`Engine::run_event_loop`).
 - **Domain logic**: `crates/bwp-core/src/config.rs` (`AppConfig::effective_throttle_limit`), `crates/bwp-engine/src/state_machine.rs` (State transitions).

@@ -58,6 +58,9 @@ windows = { version = "0.61", features = [
     "Win32_Security",
 ] }
 
+# Windows Service
+windows-service = "0.7"
+
 [workspace.lints.rust]
 unsafe_code = "deny"
 unused_results = "warn"

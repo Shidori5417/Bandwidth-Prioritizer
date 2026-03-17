@@ -9,6 +9,7 @@ use tracing_subscriber::EnvFilter;
 use bwp_core::ipc::{IpcCommand, IpcResponse};
 
 mod tui;
+mod service;
 
 #[cfg(target_os = "windows")]
 use bwp_core::ipc::windows::connect_client;
@@ -58,6 +59,24 @@ enum CliCommand {
         /// Process name to remove.
         app: String,
     },
+    
+    /// Manage the background daemon as a persistent OS service.
+    Service {
+        #[command(subcommand)]
+        action: ServiceAction,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum ServiceAction {
+    /// Register the background engine as an OS service (Requires Admin)
+    Install,
+    /// Unregister the OS service (Requires Admin)
+    Uninstall,
+    /// Start the registered OS service (Requires Admin)
+    Start,
+    /// Stop the running OS service (Requires Admin)
+    Stop,
 }
 
 cfg_if::cfg_if! {
@@ -151,6 +170,14 @@ async fn main() -> Result<()> {
         CliCommand::Remove { app } => {
             println!("➖ Removing '{}' from priority whitelist...", app);
             send_ipc_and_print(IpcCommand::RemoveApp(app)).await?;
+        }
+        CliCommand::Service { action } => {
+            match action {
+                ServiceAction::Install => service::install()?,
+                ServiceAction::Uninstall => service::uninstall()?,
+                ServiceAction::Start => service::start()?,
+                ServiceAction::Stop => service::stop()?,
+            }
         }
     }
 
