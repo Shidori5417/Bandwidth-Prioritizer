@@ -103,7 +103,7 @@ impl<C: TrafficController + 'static> Engine<C> {
 
                 IpcResponse::StatusPayload {
                     state: self.state,
-                    active_profile: None, // Will be implemented with profile configs
+                    active_profile: config.active_profile.clone(),
                     throttled_pids_count: self.normal_pids.len(), 
                     priority_pids_count: self.priority_pids.len(),
                     current_limit_kbps: config.default_throttle_limit_kbps,

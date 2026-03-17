@@ -13,6 +13,10 @@ pub struct AppConfig {
     /// General application settings.
     #[serde(default)]
     pub general: GeneralConfig,
+    /// The currently active profile.
+    #[serde(default)]
+    pub active_profile: Option<String>,
+
 
     /// List of process names considered "critical" (whitelisted).
     /// When any of these are active, non-critical processes get throttled.
@@ -105,6 +109,7 @@ impl Default for AppConfig {
     fn default() -> Self {
         Self {
             general: GeneralConfig::default(),
+            active_profile: None,
             critical_apps: vec![
                 "discord".to_string(),
                 "zoom".to_string(),
