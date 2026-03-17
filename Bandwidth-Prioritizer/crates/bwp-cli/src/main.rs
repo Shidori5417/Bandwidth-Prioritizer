@@ -8,6 +8,8 @@ use tracing_subscriber::EnvFilter;
 
 use bwp_core::ipc::{IpcCommand, IpcResponse};
 
+mod tui;
+
 #[cfg(target_os = "windows")]
 use bwp_core::ipc::windows::connect_client;
 
@@ -127,7 +129,7 @@ async fn main() -> Result<()> {
             send_ipc_and_print(IpcCommand::Status).await?;
         }
         CliCommand::Top => {
-            println!("💻 TUI Dashboard (Top) is not yet implemented.");
+            tui::run_tui().await?;
         }
         CliCommand::Set { profile } => {
             println!("🔄 Setting profile to '{}'...", profile);
@@ -159,7 +161,7 @@ async fn send_ipc_and_print(command: IpcCommand) -> Result<()> {
         Some(IpcResponse::Error(err)) => {
             println!("❌ Engine Error: {}", err);
         }
-        Some(IpcResponse::StatusPayload { state, active_profile, throttled_pids_count, priority_pids_count, current_limit_kbps }) => {
+        Some(IpcResponse::StatusPayload { state, active_profile, throttled_pids_count, priority_pids_count, current_limit_kbps, .. }) => {
             println!("\n--- Engine Status ---");
             println!("State Mode        : {}", state);
             println!("Active Profile    : {}", active_profile.as_deref().unwrap_or("None"));

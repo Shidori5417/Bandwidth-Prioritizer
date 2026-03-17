@@ -113,11 +113,10 @@ Kritik uygulamalar (Discord, Zoom, VS Code Live Share vb.) aktifken diğer tüm 
 **Hedef:** CLI ve arka plan daemon (engine) iletişimini sağla.
 
 - [x] Engine içinde IPC Server (Named Pipes / Unix Sockets) & Event birleştirme
-- [ ] `bwp-cli` inşası
-- [ ] CLI'den IPC komutları gönderme
-  - `bwp status`
-  - `bwp set-profile <name>`
-- [ ] `ratatui` ile gerçek zamanlı TUI ve anlık durum ekranı
+- [x] `bwp-cli` inşası ve Daemon lifecycle (Start/Stop) entegrasyonu
+- [x] CLI'den IPC komutları gönderme (`status`, `set`, `add`, vb.)
+- [x] `ratatui` ile gerçek zamanlı TUI (`top` komutu) ve anlık durum ekranı
+- [ ] V2 için not: `StatusPayload` üzerinde gelen `recent_events` ile ETW log akışını TUI'da gösterme
 - [ ] **Test:** End-to-end (E2E) entegrasyon testleri
 
 ---

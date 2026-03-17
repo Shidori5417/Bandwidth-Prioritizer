@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 use std::sync::Arc;
 use bwp_core::{BwpResult, MonitorEvent, ThrottleState, BandwidthLimit};
 use bwp_core::manager::ConfigManager;
@@ -32,6 +32,8 @@ pub struct Engine<C: TrafficController> {
     normal_pids: HashSet<u32>,
     /// Current engine state
     state: ThrottleState,
+    /// Ring buffer of recent events for UI presentation
+    recent_events: VecDeque<String>,
 }
 
 impl<C: TrafficController + 'static> Engine<C> {
@@ -43,7 +45,15 @@ impl<C: TrafficController + 'static> Engine<C> {
             priority_pids: HashSet::new(),
             normal_pids: HashSet::new(),
             state: ThrottleState::Normal,
+            recent_events: VecDeque::with_capacity(10),
         }
+    }
+
+    fn push_event(&mut self, msg: String) {
+        if self.recent_events.len() == 10 {
+            self.recent_events.pop_front();
+        }
+        self.recent_events.push_back(msg);
     }
 
     /// Primary event loop processing both IPC requests and raw network events dynamically over a single MPSC stream.
@@ -75,12 +85,25 @@ impl<C: TrafficController + 'static> Engine<C> {
         match command {
             IpcCommand::Status => {
                 let config = self.config_manager.get_shared_config().load();
+                
+                // Build throttled apps list
+                let mut throttled_apps = Vec::new();
+                if self.state == ThrottleState::PriorityMode {
+                    let limit_kbps = config.default_throttle_limit_kbps;
+                    for &pid in &self.normal_pids {
+                        let name = self.resolve_exe_name(pid).to_string();
+                        throttled_apps.push((name, pid, limit_kbps));
+                    }
+                }
+
                 IpcResponse::StatusPayload {
                     state: self.state,
                     active_profile: None, // Will be implemented with profile configs
                     throttled_pids_count: self.normal_pids.len(), 
                     priority_pids_count: self.priority_pids.len(),
                     current_limit_kbps: config.default_throttle_limit_kbps,
+                    throttled_apps,
+                    recent_events: self.recent_events.iter().cloned().collect(),
                 }
             }
             IpcCommand::ApplyProfile(_profile_name) => {
@@ -120,7 +143,9 @@ impl<C: TrafficController + 'static> Engine<C> {
 
         if is_priority {
             if self.priority_pids.insert(pid) {
-                info!("Priority App Detected: {} (PID: {})", exe_name, pid);
+                let msg = format!("Priority App Detected: {} (PID: {})", exe_name, pid);
+                info!("{}", msg);
+                self.push_event(msg);
                 if self.state != ThrottleState::PriorityMode {
                     self.enter_priority_mode().await;
                 }
@@ -145,7 +170,9 @@ impl<C: TrafficController + 'static> Engine<C> {
         }
 
         if self.priority_pids.remove(&pid) {
-            info!("Priority App Disconnected (PID: {})", pid);
+            let msg = format!("Priority App Disconnected (PID: {})", pid);
+            info!("{}", msg);
+            self.push_event(msg);
             if self.priority_pids.is_empty() && self.state == ThrottleState::PriorityMode {
                 self.exit_priority_mode().await;
             }
@@ -153,7 +180,9 @@ impl<C: TrafficController + 'static> Engine<C> {
     }
 
     async fn enter_priority_mode(&mut self) {
-        info!("Engaging Priority Mode! Throttling {} normal background processes.", self.normal_pids.len());
+        let msg = format!("Engaging Priority Mode! Throttling {} normal background processes.", self.normal_pids.len());
+        info!("{}", msg);
+        self.push_event(msg);
         self.state = ThrottleState::PriorityMode;
         
         let config = self.config_manager.get_shared_config().load();
@@ -165,7 +194,9 @@ impl<C: TrafficController + 'static> Engine<C> {
     }
 
     async fn exit_priority_mode(&mut self) {
-        info!("Returning to Normal Mode! Unthrottling all processes.");
+        let msg = "Returning to Normal Mode! Unthrottling all processes.".to_string();
+        info!("{}", msg);
+        self.push_event(msg);
         self.state = ThrottleState::Normal;
         let _ = self.controller.send_command(ThrottleCommand::ClearAll).await;
     }
