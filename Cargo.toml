@@ -59,7 +59,7 @@ windows = { version = "0.61", features = [
 ] }
 
 [workspace.lints.rust]
-unsafe_code = "forbid"
+unsafe_code = "deny"
 unused_results = "warn"
 missing_docs = "warn"
 
