@@ -90,13 +90,21 @@ async fn main() -> Result<()> {
                 println!("🚀 Starting bwp-engine daemon...");
             }
 
-            let mut command = std::process::Command::new("bwp-engine");
-            command.stdin(std::process::Stdio::null())
+            // Locate engine binary relative to CLI binary (same build directory)
+            let engine_path = std::env::current_exe()
+                .ok()
+                .and_then(|p| p.parent().map(|d| d.join("bwp-engine.exe")))
+                .unwrap_or_else(|| std::path::PathBuf::from("bwp-engine"));
+
+            let mut command = std::process::Command::new(&engine_path);
+            let _ = command.stdin(std::process::Stdio::null())
                    .stdout(std::process::Stdio::null())
                    .stderr(std::process::Stdio::null());
 
             #[cfg(target_os = "windows")]
-            command.creation_flags(CREATE_NO_WINDOW);
+            {
+                let _ = command.creation_flags(CREATE_NO_WINDOW);
+            }
 
             match command.spawn() {
                 Ok(child) => {

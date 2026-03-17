@@ -69,8 +69,13 @@ impl<C: TrafficController + 'static> Engine<C> {
                     self.handle_connection_closed(info.pid).await;
                 }
                 EngineEvent::Ipc(command, response_tx) => {
+                    let is_stop = matches!(command, IpcCommand::Stop);
                     let resp = self.handle_ipc_command(command).await;
                     let _ = response_tx.send(resp);
+                    if is_stop {
+                        info!("Graceful shutdown initiated by IPC Stop command.");
+                        break;
+                    }
                 }
             }
         }
@@ -121,7 +126,7 @@ impl<C: TrafficController + 'static> Engine<C> {
             IpcCommand::Stop => {
                 warn!("Received Stop command. Shutting down throttle engine.");
                 let _ = self.controller.send_command(ThrottleCommand::ClearAll).await;
-                std::process::exit(0);
+                IpcResponse::Ok
             }
         }
     }

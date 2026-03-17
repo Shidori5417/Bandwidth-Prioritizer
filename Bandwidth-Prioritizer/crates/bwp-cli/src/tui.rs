@@ -22,6 +22,14 @@ use bwp_core::ipc::windows::connect_client;
 use bwp_core::ipc::linux::connect_client;
 
 pub async fn run_tui() -> Result<()> {
+    // Install panic hook to restore terminal on crash
+    let original_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let _ = disable_raw_mode();
+        let _ = execute!(io::stdout(), LeaveAlternateScreen, DisableMouseCapture);
+        original_hook(info);
+    }));
+
     // Setup terminal
     enable_raw_mode()?;
     let mut stdout = io::stdout();
