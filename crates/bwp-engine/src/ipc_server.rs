@@ -39,24 +39,26 @@ async fn run_windows_ipc_server(engine_tx: mpsc::Sender<EngineEvent>) {
         if let Err(e) = server.connect().await {
             error!("Named Pipe connection error: {}", e);
             // Recreate server to prevent burning CPU
-            let mut next_server = loop_server();
-            while next_server.is_err() {
-                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-                next_server = loop_server();
-            }
-            server = next_server.unwrap();
+            server = loop {
+                match loop_server() {
+                    Ok(s) => break s,
+                    Err(_) => tokio::time::sleep(std::time::Duration::from_secs(1)).await,
+                }
+            };
             continue;
         }
 
         // We have a connected client!
         let connected_client = server;
-        let mut next_server = loop_server();
-        while let Err(e) = next_server {
-            error!("Failed to create next Named Pipe instance: {}", e);
-            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-            next_server = loop_server();
-        }
-        server = next_server.unwrap();
+        server = loop {
+            match loop_server() {
+                Ok(s) => break s,
+                Err(e) => {
+                    error!("Failed to create next Named Pipe instance: {}", e);
+                    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                }
+            }
+        };
 
         let tx = engine_tx.clone();
         tokio::spawn(async move {
