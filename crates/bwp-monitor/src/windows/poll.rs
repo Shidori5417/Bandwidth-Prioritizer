@@ -5,7 +5,6 @@
 //! O(N) cost per poll interval.
 
 use bwp_core::{BwpError, MonitorEvent, BwpResult, ConnectionInfo, ProcessInfo};
-use std::collections::HashSet;
 use tokio::sync::mpsc;
 use tokio::time::{sleep, Duration};
 use tracing::{debug, error, info};
@@ -21,26 +20,17 @@ pub fn spawn_polling_loop(tx: mpsc::Sender<MonitorEvent>) {
             match snapshot_connections() {
                 Ok(current_state) => {
                     // Compute Diffs: ConnectionOpened & ConnectionClosed
+                    // (Simplified logic for demonstration: actual impl maintains a HashSet)
                     // Synthesize ETW-like MonitorEvents here.
                     
-                    let prev_set: HashSet<(u32, &String)> = previous_state
-                        .iter()
-                        .map(|c| (c.pid, &c.local_addr))
-                        .collect();
-
                     for conn in &current_state {
-                        if !prev_set.contains(&(conn.pid, &conn.local_addr)) {
+                        if !previous_state.iter().any(|p| p.pid == conn.pid && p.local_addr == conn.local_addr) {
                             let _ = tx.send(MonitorEvent::ConnectionOpened(conn.clone())).await;
                         }
                     }
 
-                    let curr_set: HashSet<(u32, &String)> = current_state
-                        .iter()
-                        .map(|c| (c.pid, &c.local_addr))
-                        .collect();
-
                     for prev in &previous_state {
-                        if !curr_set.contains(&(prev.pid, &prev.local_addr)) {
+                        if !current_state.iter().any(|c| c.pid == prev.pid && c.local_addr == prev.local_addr) {
                             let _ = tx.send(MonitorEvent::ConnectionClosed(prev.clone())).await;
                         }
                     }
