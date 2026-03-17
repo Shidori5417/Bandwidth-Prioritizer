@@ -218,3 +218,44 @@ impl<C: TrafficController + 'static> Engine<C> {
         name
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bwp_core::BandwidthLimit;
+
+    struct MockController;
+
+    impl TrafficController for MockController {
+        async fn send_command(&self, _command: ThrottleCommand) -> BwpResult<()> {
+            Ok(())
+        }
+
+        async fn active_rules(&self) -> BwpResult<Vec<(u32, BandwidthLimit)>> {
+            Ok(vec![])
+        }
+    }
+
+    #[tokio::test]
+    async fn test_resolve_exe_name_caching() {
+        let config_manager = Arc::new(ConfigManager::new_or_default("dummy.toml"));
+        let controller = Arc::new(MockController);
+        let engine = Engine::new(config_manager, controller);
+
+        // First call should resolve to "unknown_{pid}.exe" and cache it
+        let pid = 1234;
+        let name1 = engine.resolve_exe_name(pid);
+        assert_eq!(name1.as_ref(), format!("unknown_{pid}.exe").as_str());
+
+        // Ensure it's in the cache
+        assert!(engine.pid_cache.contains_key(&pid));
+
+        // Overwrite the cache to simulate a different resolved name
+        let mocked_name: Arc<str> = Arc::from("mocked_1234.exe");
+        engine.pid_cache.insert(pid, mocked_name.clone());
+
+        // Second call should fetch the newly inserted cached name, not "unknown_1234.exe"
+        let name2 = engine.resolve_exe_name(pid);
+        assert_eq!(name2.as_ref(), "mocked_1234.exe");
+    }
+}
