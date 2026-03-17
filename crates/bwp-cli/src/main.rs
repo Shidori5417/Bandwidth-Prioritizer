@@ -77,6 +77,8 @@ enum ServiceAction {
     Start,
     /// Stop the running OS service (Requires Admin)
     Stop,
+    /// Check the status of the OS service (Requires Admin)
+    Status,
 }
 
 cfg_if::cfg_if! {
@@ -177,6 +179,7 @@ async fn main() -> Result<()> {
                 ServiceAction::Uninstall => service::uninstall()?,
                 ServiceAction::Start => service::start()?,
                 ServiceAction::Stop => service::stop()?,
+                ServiceAction::Status => service::status()?,
             }
         }
     }

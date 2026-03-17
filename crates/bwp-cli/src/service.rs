@@ -79,6 +79,15 @@ pub fn stop() -> Result<()> {
     Ok(())
 }
 
+#[cfg(target_os = "windows")]
+pub fn status() -> Result<()> {
+    let manager = ServiceManager::local_computer(None::<&str>, ServiceManagerAccess::CONNECT)?;
+    let service = manager.open_service(SERVICE_NAME, ServiceAccess::QUERY_STATUS)?;
+    let status = service.query_status()?;
+    println!("🔍 Windows Service '{}' Status: {:?}", SERVICE_DISPLAY_NAME, status.current_state);
+    Ok(())
+}
+
 #[cfg(not(target_os = "windows"))]
 pub fn install() -> anyhow::Result<()> { Err(anyhow::anyhow!("Service commands only supported on Windows")) }
 #[cfg(not(target_os = "windows"))]
@@ -87,3 +96,5 @@ pub fn uninstall() -> anyhow::Result<()> { Err(anyhow::anyhow!("Service commands
 pub fn start() -> anyhow::Result<()> { Err(anyhow::anyhow!("Service commands only supported on Windows")) }
 #[cfg(not(target_os = "windows"))]
 pub fn stop() -> anyhow::Result<()> { Err(anyhow::anyhow!("Service commands only supported on Windows")) }
+#[cfg(not(target_os = "windows"))]
+pub fn status() -> anyhow::Result<()> { Err(anyhow::anyhow!("Service commands only supported on Windows")) }
