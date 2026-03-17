@@ -45,7 +45,7 @@ pub enum IpcResponse {
         /// Enforced limit across throttled processes in Kbps.
         current_limit_kbps: u64,
         /// Throttled applications list: (App Name, PID, Limit in Kbps)
-        throttled_apps: Vec<(String, u32, u64)>,
+        throttled_apps: Vec<(std::sync::Arc<str>, u32, u64)>,
         /// Recent engine events for the TUI log
         recent_events: Vec<String>,
     },
