@@ -1,0 +1,387 @@
+﻿cargo : warning: unused result of type `
+std::thread::JoinHandle<()>`
+At line:1 char:1
++ cargo check --workspace 2>&1 | Out-Fil
+e -Encoding utf8 build_err7.txt
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecif 
+   ied: (warning: unused...JoinHandle<  
+  ()>`:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCom 
+   mandError
+ 
+   --> crates\bwp-core\src\manager.rs:91
+:9
+    |
+ 91 | /         std::thread::spawn(move 
+|| {
+ 92 | |             let mut watcher = no
+tify::recommended_watcher(move |res: Res
+ult<Event, notify::Error>| {
+ 93 | |                 if let Ok(event)
+ = res {
+ 94 | |                     if event.kin
+d.is_modify() || event.kind.is_create() 
+{
+...   |
+113 | |         });
+    | |___________^
+    |
+    = note: requested on the command lin
+e with `-W unused-results`
+
+warning: unused result of type `tokio::t
+ask::JoinHandle<()>`
+   --> crates\bwp-core\src\manager.rs:11
+7:9
+    |
+117 | /         tokio::spawn(async move 
+{
+118 | |             info!("Hot-reload wa
+tcher started on {:?}", file_path);
+119 | |             let mut last_reload_
+time = tokio::time::Instant::now();
+...   |
+142 | |         });
+    | |___________^
+
+warning: `bwp-core` (lib) generated 2 wa
+rnings
+warning: unused import: `debug`
+  --> crates\bwp-monitor\src\windows\etw
+.rs:11:15
+   |
+11 | use tracing::{debug, error, info, t
+race};
+   |               ^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (pa
+rt of `#[warn(unused)]`) on by default
+
+warning: unused import: `std::sync::Arc`
+  --> crates\bwp-monitor\src\windows\etw
+.rs:12:5
+   |
+12 | use std::sync::Arc;
+   |     ^^^^^^^^^^^^^^
+
+warning: unused import: `std::time::Dura
+tion`
+  --> crates\bwp-monitor\src\windows\etw
+.rs:13:5
+   |
+13 | use std::time::Duration;
+   |     ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `BwpError`
+ --> crates\bwp-monitor\src\windows\poll
+.rs:7:16
+  |
+7 | use bwp_core::{BwpError, MonitorEven
+t, BwpResult, ConnectionInfo, ProcessInf
+o};
+  |                ^^^^^^^^
+
+warning: unused import: `debug`
+  --> crates\bwp-monitor\src\windows\pol
+l.rs:10:15
+   |
+10 | use tracing::{debug, error, info};
+   |               ^^^^^
+
+warning: unused import: `BwpError`
+  --> crates\bwp-monitor\src\windows\mod
+.rs:13:16
+   |
+13 | use bwp_core::{BwpError, BwpResult,
+ ConnectionInfo, MonitorEvent, ProcessIn
+fo};
+   |                ^^^^^^^^
+
+warning: variable does not need to be mu
+table
+  --> crates\bwp-monitor\src\windows\etw
+.rs:40:29
+   |
+40 |                         let mut par
+ser = Parser::create(record, &schema);
+   |                             ----^^^
+^^^
+   |                             |
+   |                             help: r
+emove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part o
+f `#[warn(unused)]`) on by default
+
+warning: unused result of type `std::thr
+ead::JoinHandle<()>`
+  --> crates\bwp-monitor\src\windows\etw
+.rs:84:5
+   |
+84 | /     std::thread::spawn(move || {
+85 | |         info!("ETW Trace Session 
+'{}' active. Processing events...", trac
+e_name);
+86 | |         
+87 | |         let mut session = trace_s
+ession;
+...  |
+94 | |     });
+   | |_______^
+   |
+   = note: requested on the command line
+ with `-W unused-results`
+
+warning: unused result of type `tokio::t
+ask::JoinHandle<!>`
+  --> crates\bwp-monitor\src\windows\pol
+l.rs:14:5
+   |
+14 | /     tokio::spawn(async move {
+15 | |         info!("Graceful fallback 
+to GetExtendedTcpTable polling loop star
+ted.");
+16 | |
+17 | |         let mut previous_state: V
+ec<ConnectionInfo> = vec![];
+...  |
+47 | |     });
+   | |_______^
+
+warning: unused import: `BwpError`
+ --> crates\bwp-controller\src\windows\d
+ivert.rs:8:32
+  |
+8 | use bwp_core::{BandwidthLimit, BwpEr
+ror, BwpResult};
+  |                                ^^^^^
+^^^
+  |
+  = note: `#[warn(unused_imports)]` (par
+t of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mu
+table
+   --> crates\bwp-controller\src\windows
+\divert.rs:114:21
+    |
+114 |                 let mut packet_buf
+ = vec![0u8; 65535];
+    |                     ----^^^^^^^^^^
+    |                     |
+    |                     help: remove t
+his `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part 
+of `#[warn(unused)]`) on by default
+
+warning: unused variable: `tb`
+   --> crates\bwp-controller\src\windows
+\divert.rs:101:33
+    |
+101 |                     if let Some(tb
+) = buckets.get(pid) {
+    |                                 ^^
+ help: if this is intentional, prefix it
+ with an underscore: `_tb`
+    |
+    = note: `#[warn(unused_variables)]` 
+(part of `#[warn(unused)]`) on by defaul
+t
+
+warning: unused variable: `handle`
+   --> crates\bwp-controller\src\windows
+\divert.rs:113:25
+    |
+113 |             if let Some(ref handle
+) = wd {
+    |                         ^^^^^^^^^^
+ help: if this is intentional, prefix it
+ with an underscore: `_handle`
+
+warning: unused variable: `packet_buf`
+   --> crates\bwp-controller\src\windows
+\divert.rs:114:21
+    |
+114 |                 let mut packet_buf
+ = vec![0u8; 65535];
+    |                     ^^^^^^^^^^^^^^
+ help: if this is intentional, prefix it
+ with an underscore: `_packet_buf`
+
+warning: missing documentation for a mod
+ule
+ --> crates\bwp-controller\src\lib.rs:8:
+1
+  |
+8 | pub mod token_bucket;
+  | ^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: requested on the command line 
+with `-W missing-docs`
+
+warning: missing documentation for a mod
+ule
+  --> crates\bwp-controller\src\lib.rs:1
+1:1
+   |
+11 | pub mod windows;
+   | ^^^^^^^^^^^^^^^
+
+warning: missing documentation for a str
+uct field
+  --> crates\bwp-controller\src\traits.r
+s:12:18
+   |
+12 |     ApplyLimit { pid: u32, limit: B
+andwidthLimit },
+   |                  ^^^^^^^^
+
+warning: missing documentation for a str
+uct field
+  --> crates\bwp-controller\src\traits.r
+s:12:28
+   |
+12 |     ApplyLimit { pid: u32, limit: B
+andwidthLimit },
+   |                            ^^^^^^^^
+^^^^^^^^^^^^^
+
+warning: missing documentation for a str
+uct field
+  --> crates\bwp-controller\src\traits.r
+s:14:19
+   |
+14 |     RemoveLimit { pid: u32 },
+   |                   ^^^^^^^^
+
+warning: unused result of type `std::thr
+ead::JoinHandle<()>`
+  --> crates\bwp-controller\src\windows\
+mod.rs:27:9
+   |
+27 | /         std::thread::spawn(move |
+| {
+28 | |             if let Err(e) = diver
+t::run_windivert_engine(command_rx, acti
+ve_rules_clone) {
+29 | |                 tracing::error!("
+WinDivert Engine Terminated: {e}");
+30 | |             }
+31 | |         });
+   | |___________^
+   |
+   = note: requested on the command line
+ with `-W unused-results`
+
+warning: missing documentation for a fun
+ction
+  --> crates\bwp-controller\src\windows\
+divert.rs:28:1
+   |
+28 | / pub fn run_windivert_engine(
+29 | |     mut command_rx: mpsc::Receive
+r<ThrottleCommand>,
+30 | |     active_rules_lock: Arc<RwLock
+<Vec<(u32, BandwidthLimit)>>>
+31 | | ) -> BwpResult<()> {
+   | |__________________^
+
+warning: unused result of type `Option<T
+okenBucket>`
+  --> crates\bwp-controller\src\windows\
+divert.rs:69:25
+   |
+69 |                         buckets.ins
+ert(pid, TokenBucket::new(limit));
+   |                         ^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused result of type `Option<T
+okenBucket>`
+  --> crates\bwp-controller\src\windows\
+divert.rs:77:25
+   |
+77 |                         buckets.rem
+ove(&pid);
+   |                         ^^^^^^^^^^^
+^^^^^^^^^^
+
+warning: unused result of type `u32`
+  --> crates\bwp-controller\src\windows\
+divert.rs:79:29
+   |
+79 | ...                   throttled_pid
+s.remove(pos);
+   |                       ^^^^^^^^^^^^^
+^^^^^^^^^^^^^^
+
+warning: `bwp-monitor` (lib) generated 9
+ warnings (run `cargo fix --lib -p bwp-m
+onitor` to apply 7 suggestions)
+warning: `bwp-controller` (lib) generate
+d 15 warnings (run `cargo fix --lib -p b
+wp-controller` to apply 5 suggestions)
+warning: unused import: `BandwidthLimit`
+ --> crates\bwp-engine\src\state_machine
+.rs:3:56
+  |
+3 | use bwp_core::{BwpResult, MonitorEve
+nt, ThrottleState, BandwidthLimit};
+  |                                     
+                   ^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (par
+t of `#[warn(unused)]`) on by default
+
+warning: missing documentation for a mod
+ule
+  --> crates\bwp-engine\src\lib.rs:10:1
+   |
+10 | pub mod state_machine;
+   | ^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: requested on the command line
+ with `-W missing-docs`
+
+warning: missing documentation for an as
+sociated function
+  --> crates\bwp-engine\src\state_machin
+e.rs:29:5
+   |
+29 |     pub fn new(config_manager: Arc<
+ConfigManager>, controller: Arc<C>) -> S
+elf {
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+^^^
+
+warning: unused result of type `Option<(
+u32, Arc<str>)>`
+  --> crates\bwp-engine\src\state_machin
+e.rs:63:9
+   |
+63 |         self.pid_cache.remove(&pid)
+;
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+^
+   |
+   = note: requested on the command line
+ with `-W unused-results`
+
+warning: unused result of type `Option<A
+rc<str>>`
+   --> crates\bwp-engine\src\state_machi
+ne.rs:135:9
+    |
+135 |         self.pid_cache.insert(pid,
+ name.clone());
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^
+
+warning: `bwp-engine` (lib) generated 5 
+warnings (run `cargo fix --lib -p bwp-en
+gine` to apply 1 suggestion)
+    Finished `dev` profile [unoptimized 
++ debuginfo] target(s) in 0.21s

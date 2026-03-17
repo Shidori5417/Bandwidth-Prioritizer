@@ -1,0 +1,20 @@
+[package]
+name = "bwp-engine"
+description = "Core state machine and orchestration for Bandwidth-Prioritizer"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+bwp-core = { workspace = true }
+bwp-monitor = { workspace = true }
+bwp-controller = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true }
+dashmap = "5"
+
+[lints]
+workspace = true

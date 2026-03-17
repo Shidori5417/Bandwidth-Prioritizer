@@ -17,7 +17,7 @@ futures = "0.3"
 
 [target.'cfg(windows)'.dependencies]
 windows = { workspace = true }
-windivert = "0.6" # Stable WinDivert wrapper
+windivert = { version = "0.6", features = ["vendored"] } # Stable WinDivert wrapper with vendored driver
 
 [lints]
 workspace = true

@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "crates/bwp-core",
+    "crates/bwp-engine",
     "crates/bwp-monitor",
     "crates/bwp-controller",
     "crates/bwp-cli",
@@ -43,6 +44,7 @@ notify = "7"
 
 # Internal crates
 bwp-core = { path = "crates/bwp-core" }
+bwp-engine = { path = "crates/bwp-engine" }
 bwp-monitor = { path = "crates/bwp-monitor" }
 bwp-controller = { path = "crates/bwp-controller" }
 

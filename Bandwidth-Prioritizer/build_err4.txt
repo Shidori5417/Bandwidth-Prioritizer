@@ -1,0 +1,126 @@
+﻿cargo :     Checking futures-core v0.3.3
+2
+At line:1 char:1
++ cargo check -p bwp-controller 2>&1 | O
+ut-File -Encoding utf8 build_er ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecif 
+   ied: (    Checking futures-core v0.  
+  3.32:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCom 
+   mandError
+ 
+warning: unused result of type `std::thr
+ead::JoinHandle<()>`
+   --> crates\bwp-core\src\manager.rs:91
+:9
+    |
+ 91 | /         std::thread::spawn(move 
+|| {
+ 92 | |             let mut watcher = no
+tify::recommended_watcher(move |res: Res
+ult<Event, notify::Error>| {
+ 93 | |                 if let Ok(event)
+ = res {
+ 94 | |                     if event.kin
+d.is_modify() || event.kind.is_create() 
+{
+...   |
+113 | |         });
+    | |___________^
+    |
+    = note: requested on the command lin
+e with `-W unused-results`
+
+warning: unused result of type `tokio::t
+ask::JoinHandle<()>`
+   --> crates\bwp-core\src\manager.rs:11
+7:9
+    |
+117 | /         tokio::spawn(async move 
+{
+118 | |             info!("Hot-reload wa
+tcher started on {:?}", file_path);
+119 | |             let mut last_reload_
+time = tokio::time::Instant::now();
+...   |
+142 | |         });
+    | |___________^
+
+warning: `bwp-core` (lib) generated 2 wa
+rnings
+    Checking futures-channel v0.3.32
+    Checking futures-util v0.3.32
+    Checking futures-executor v0.3.32
+    Checking futures v0.3.32
+    Checking bwp-controller v0.1.0 (C:\U
+sers\karac\Desktop\projeler\Bandwidth-Pr
+ioritizer\crates\bwp-controller)
+warning: unused import: `BwpError`
+ --> crates\bwp-controller\src\windows\d
+ivert.rs:8:32
+  |
+8 | use bwp_core::{BandwidthLimit, BwpEr
+ror, BwpResult};
+  |                                ^^^^^
+^^^
+  |
+  = note: `#[warn(unused_imports)]` (par
+t of `#[warn(unused)]`) on by default
+
+error[E0107]: missing generics for struc
+t `WinDivert`
+  --> crates\bwp-controller\src\windows\
+divert.rs:48:28
+   |
+48 |         let mut wd: Option<WinDiver
+t> = None;
+   |                            ^^^^^^^^
+^ expected 1 generic argument
+   |
+note: struct defined here, with 1 generi
+c parameter: `L`
+  --> C:\Users\karac\.cargo\registry\src
+\index.crates.io-1949cf8c6b5b557f\windiv
+ert-0.6.0\src\divert\mod.rs:30:12
+   |
+30 | pub struct WinDivert<L: layer::WinD
+ivertLayerTrait> {
+   |            ^^^^^^^^^ -
+help: add missing generic argument
+   |
+48 |         let mut wd: Option<WinDiver
+t<L>> = None;
+   |                                    
+ +++
+
+error[E0308]: mismatched types
+   --> crates\bwp-controller\src\windows
+\divert.rs:50:62
+    |
+ 50 |             wd = match WinDivert::
+network(&filter, priority, 0) {
+    |                        -----------
+-------                    ^ expected `W
+inDivertFlags`, found integer
+    |                        |
+    |                        arguments t
+o this function are incorrect
+    |
+note: associated function defined here
+   --> C:\Users\karac\.cargo\registry\sr
+c\index.crates.io-1949cf8c6b5b557f\windi
+vert-0.6.0\src\divert\mod.rs:118:12
+    |
+118 |     pub fn network(
+    |            ^^^^^^^
+
+Some errors have detailed explanations: 
+E0107, E0308.
+For more information about an error, try
+ `rustc --explain E0107`.
+warning: `bwp-controller` (lib) generate
+d 1 warning
+error: could not compile `bwp-controller
+` (lib) due to 2 previous errors; 1 warn
+ing emitted

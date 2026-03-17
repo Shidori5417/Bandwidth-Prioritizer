@@ -10,7 +10,8 @@ use std::sync::Arc;
 use std::collections::HashMap;
 use tokio::sync::{mpsc, RwLock};
 use tracing::{info, debug, warn};
-use windivert::WinDivert;
+use windivert::{WinDivert, layer::NetworkLayer};
+use windivert::prelude::WinDivertFlags;
 
 // Reconstruct a WinDivert BPF string matching *only* the PIDs we care about.
 // `outbound and (pid == 1000 or pid == 2000)`
@@ -45,9 +46,9 @@ pub fn run_windivert_engine(
         // Using "false" throws an invalid parameter error in WinDivert if instantiated,
         // so we'll suspend WinDivert instantiation completely if the whitelist implies 0 intercepts.
         
-        let mut wd: Option<WinDivert> = None;
+        let mut wd: Option<WinDivert<NetworkLayer>> = None;
         if filter != "false" {
-            wd = match WinDivert::network(&filter, priority, 0) {
+            wd = match WinDivert::network(&filter, priority, WinDivertFlags::new()) {
                 Ok(instance) => Some(instance),
                 Err(e) => {
                     warn!("Failed to inject into WinDivert: {}", e);

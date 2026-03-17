@@ -87,14 +87,14 @@ Kritik uygulamalar (Discord, Zoom, VS Code Live Share vb.) aktifken diğer tüm 
 
 ---
 
-### 🔲 FAZ 4 — Throttle Motoru (Throttle Engine)
+### 🚧 FAZ 4 — Throttle Motoru (Throttle Engine)
 **Hedef:** Dinamik kısıtlama mantığını işlet.
 
-- [ ] State machine: `Normal` → `PriorityMode` → `Normal`
-- [ ] Kritik uygulama başlatıldığında otomatik tetikleme
-- [ ] Kritik uygulama kapandığında geri alma (graceful restore)
+- [x] State machine: `Normal` → `PriorityMode` → `Normal` (bwp-engine crate)
+- [x] Kritik uygulama başlatıldığında otomatik tetikleme
+- [x] Kritik uygulama kapandığında geri alma (graceful restore)
 - [ ] Kademeli kısıtlama (ani kesim yerine yumuşak geçiş)
-- [ ] CPU/bellek kullanımı gözetimi (lightweight kalması için)
+- [x] CPU/bellek kullanımı gözetimi (lightweight kalması için)
 - [ ] **Test:** Senaryo tabanlı durum geçiş testleri
 
 ---
