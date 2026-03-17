@@ -67,22 +67,22 @@ Kritik uygulamalar (Discord, Zoom, VS Code Live Share vb.) aktifken diğer tüm 
 
 ---
 
-### 🔲 FAZ 3 — Trafik Kontrolcüsü (Traffic Controller)
+### 🚧 FAZ 3 — Trafik Kontrolcüsü (Traffic Controller)
 **Hedef:** Gerçek bant genişliği kısıtlamasını uygula.
 
 #### Linux
 - [ ] `libbpf-rs` ile eBPF entegrasyonu araştırması
-- [ ] `tc` (traffic control) komutu ile `htb` qdisc programatik yönetimi
-- [ ] Alternatif: `nftables` kuralları ile hız sınırlama
+- [x] `tc` (traffic control) komutu ile `htb` qdisc programatik yönetimi
+- [x] Alternatif: `nftables` kuralları ile hız sınırlama
 
 #### Windows
 - [ ] Windows Filtering Platform (WFP) API entegrasyonu
-- [ ] `windows-rs` crate ile WFP callout driver yaklaşımı
-- [ ] Alternatif: `NetLimiter` benzeri yaklaşım (socket-level)
+- [x] Windows: `windivert` ile paket arayüzüne (flow-level filter ile) entegrasyon
+- [x] Alternatif: `NetLimiter` benzeri yaklaşım (socket-level)
 
 #### Ortak
-- [ ] Token Bucket algoritması implementasyonu (hız sınırlayıcı çekirdeği)
-- [ ] Per-PID kural ekleme/kaldırma API'si
+- [x] Token Bucket algoritması implementasyonu (hız sınırlayıcı çekirdeği)
+- [x] Per-PID kural ekleme/kaldırma API'si
 - [ ] **Test:** Sanal ağ arayüzü ile entegrasyon testleri
 
 ---

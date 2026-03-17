@@ -5,25 +5,27 @@
 
 use bwp_core::{BandwidthLimit, BwpResult};
 
+/// An explicit command dictating how a specific PID should be handled.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ThrottleCommand {
+    /// Throttle this process with a specified limit.
+    ApplyLimit { pid: u32, limit: BandwidthLimit },
+    /// Allow this process free flow. Removes from throttle list.
+    RemoveLimit { pid: u32 },
+    /// Clear all limits across the system. Fully unblock all flows.
+    ClearAll,
+}
+
 /// Trait for applying traffic shaping rules at the OS level.
 ///
-/// Platform-specific implementations handle the actual kernel or
-/// driver interaction (WFP on Windows, tc/eBPF on Linux).
+/// On Windows, this updates a dynamic WinDivert filter string to intercept
+/// ONLY the PIDs being throttled. On Linux, this manages `tc htb` classes.
 #[allow(async_fn_in_trait)]
 pub trait TrafficController: Send + Sync {
-    /// Apply a bandwidth limit to a specific process (by PID).
-    ///
-    /// If a rule already exists for this PID, it should be updated.
-    async fn throttle_process(&self, pid: u32, limit: BandwidthLimit) -> BwpResult<()>;
-
-    /// Remove the bandwidth limit for a specific process.
-    ///
-    /// No-op if no rule exists for this PID.
-    async fn unthrottle_process(&self, pid: u32) -> BwpResult<()>;
-
-    /// Remove all active throttling rules (e.g. on shutdown).
-    async fn clear_all_rules(&self) -> BwpResult<()>;
-
-    /// Returns the list of PIDs currently being throttled.
+    /// Send a throttle command to the engine. This pushes the update
+    /// as an event to the underlying networking thread without blocking.
+    async fn send_command(&self, command: ThrottleCommand) -> BwpResult<()>;
+    
+    /// Returns the list of PIDs currently being throttled, and their limits.
     async fn active_rules(&self) -> BwpResult<Vec<(u32, BandwidthLimit)>>;
 }

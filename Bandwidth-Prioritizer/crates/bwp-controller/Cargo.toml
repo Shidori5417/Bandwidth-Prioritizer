@@ -13,9 +13,11 @@ serde = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 tokio = { workspace = true }
+futures = "0.3"
 
 [target.'cfg(windows)'.dependencies]
 windows = { workspace = true }
+windivert = "0.6" # Stable WinDivert wrapper
 
 [lints]
 workspace = true
