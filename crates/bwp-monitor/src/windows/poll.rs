@@ -49,9 +49,39 @@ pub fn spawn_polling_loop(tx: mpsc::Sender<MonitorEvent>) {
 
 /// Returns a frozen snapshot of processes using the net APIs (`GetExtendedTcpTable`, `GetExtendedUdpTable`).
 pub fn snapshot_network_processes() -> BwpResult<Vec<ProcessInfo>> {
-    // Phase 1 Dummy implementation.
-    // In actual implementation, we map `MIB_TCPROW_OWNER_PID` rows.
-    Ok(vec![])
+    use std::collections::HashSet;
+    use sysinfo::System;
+    use netstat2::{get_sockets_info, AddressFamilyFlags, ProtocolFlags};
+
+    let af_flags = AddressFamilyFlags::IPV4 | AddressFamilyFlags::IPV6;
+    let proto_flags = ProtocolFlags::TCP | ProtocolFlags::UDP;
+
+    let mut active_pids = HashSet::new();
+
+    if let Ok(sockets) = get_sockets_info(af_flags, proto_flags) {
+        for socket in sockets {
+            for pid in socket.associated_pids {
+                let _ = active_pids.insert(pid);
+            }
+        }
+    }
+
+    let sys = System::new_with_specifics(
+        sysinfo::RefreshKind::nothing().with_processes(sysinfo::ProcessRefreshKind::everything()),
+    );
+
+    let mut processes = Vec::new();
+    for (pid, process) in sys.processes() {
+        if active_pids.contains(&pid.as_u32()) {
+            processes.push(ProcessInfo {
+                pid: pid.as_u32(),
+                name: process.name().to_string_lossy().into_owned(),
+                exe_path: process.exe().map(|p| p.to_string_lossy().into_owned()),
+            });
+        }
+    }
+
+    Ok(processes)
 }
 
 /// Returns a frozen snapshot of active outbound connections per PID.
