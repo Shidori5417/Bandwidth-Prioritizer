@@ -96,7 +96,7 @@ impl<C: TrafficController + 'static> Engine<C> {
                 if self.state == ThrottleState::PriorityMode {
                     let limit_kbps = config.default_throttle_limit_kbps;
                     for &pid in &self.normal_pids {
-                        let name = self.resolve_exe_name(pid).to_string();
+                        let name = self.resolve_exe_name(pid);
                         throttled_apps.push((name, pid, limit_kbps));
                     }
                 }
