@@ -100,7 +100,14 @@ impl ConfigManager {
             .expect("Failed to initialize file watcher");
 
             // Attempt to watch the directory of the config file.
-            let parent_dir = path_clone.parent().unwrap_or(Path::new("."));
+            let parent_dir = match path_clone.parent() {
+                Some(p) if !p.as_os_str().is_empty() => p,
+                _ => {
+                    error!("Cannot determine parent directory for config file {:?}", path_clone);
+                    return;
+                }
+            };
+
             if let Err(e) = watcher.watch(parent_dir, RecursiveMode::NonRecursive) {
                 error!("File watcher failed to attach to directory: {e}");
                 return;
