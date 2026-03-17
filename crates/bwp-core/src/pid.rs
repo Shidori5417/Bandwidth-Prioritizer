@@ -74,11 +74,41 @@ pub fn remove_pid() -> Result<()> {
 
 /// Checks if a process with the given PID is currently running.
 #[cfg(target_os = "windows")]
-pub fn is_process_running(_pid: u32) -> bool {
-    // In a real implementation we would use `OpenProcess` from the Windows API.
-    // For now, if the file exists and IPC fails, we'll assume it's dead, but this function
-    // acts as a lightweight heuristic. Returning true relies on IPC failure to clean up.
-    true
+pub fn is_process_running(pid: u32) -> bool {
+    use windows::core::HRESULT;
+    use windows::Win32::Foundation::{CloseHandle, ERROR_ACCESS_DENIED, STILL_ACTIVE};
+    use windows::Win32::System::Threading::{
+        GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+
+    // SAFETY: We are calling Windows API functions to query process information.
+    // The handle is properly closed if it's successfully opened.
+    #[allow(unsafe_code)]
+    let handle_result = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) };
+
+    match handle_result {
+        Ok(handle) => {
+            let mut exit_code: u32 = 0;
+            #[allow(unsafe_code)]
+            let result = unsafe { GetExitCodeProcess(handle, &mut exit_code) };
+            #[allow(unsafe_code)]
+            unsafe {
+                let _ = CloseHandle(handle);
+            }
+
+            if result.is_ok() {
+                exit_code == STILL_ACTIVE.0 as u32
+            } else {
+                true // If we can open it but not get exit code, assume it's running
+            }
+        }
+        Err(err) => {
+            // ERROR_ACCESS_DENIED means the process is running but we don't have permission to query it
+            // ERROR_INVALID_PARAMETER usually means the process doesn't exist
+            let hresult: HRESULT = ERROR_ACCESS_DENIED.into();
+            err.code() == hresult
+        }
+    }
 }
 
 #[cfg(target_os = "linux")]
