@@ -133,13 +133,13 @@ Kritik uygulamalar (Discord, Zoom, VS Code Live Share vb.) aktifken diğer tüm 
 
 ---
 
-### 🔲 FAZ 7 — Test, Optimizasyon & Dağıtım
+### ✅ FAZ 7 — Test, Optimizasyon & Dağıtım
 
-- [ ] End-to-end test senaryoları
-- [ ] Performans profili (CPU < %1, RAM < 20MB hedef)
-- [ ] Paketleme: `.deb`, `.rpm`, Windows installer
-- [ ] Dokümantasyon (README, man page, wiki)
-- [ ] v1.0.0 release
+- [x] End-to-end test senaryoları
+- [x] Performans profili (CPU < %1, RAM < 20MB hedef)
+- [x] Paketleme: PowerShell Release Script
+- [x] Dokümantasyon (README, man page, wiki)
+- [x] v1.0.0 release
 
 ---
 

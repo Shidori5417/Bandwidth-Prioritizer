@@ -47,57 +47,66 @@ You're in a Discord call or Zoom meeting, and a background download tanks your c
 | `bwp-controller` | Traffic shaping (WFP on Windows, tc/eBPF on Linux) |
 | `bwp-cli` | CLI (`clap`) and TUI (`ratatui`) interface |
 
-## 🚀 Quick Start
+## 🚀 Quick Start (Windows)
 
 ### Prerequisites
 
 - **Rust** ≥ 1.85 (2024 edition)
-- **Windows**: Administrator privileges (for WFP)
-- **Linux**: Root or `CAP_NET_ADMIN` capability (for tc/eBPF)
+- **Windows**: Administrator privileges (for WinDivert & Windows Service Management)
 
-### Build
+### Building the Release
 
 ```bash
-cargo build --workspace
+cargo build --release
+```
+*(Note: `WinDivert.dll` is automatically copied to your output folder during the build process).*
+
+### 🛠️ OS-Level Service Management
+
+Bandwidth Prioritizer is designed to run silently as a background Windows Service. Run an **elevated PowerShell (Administrator)** window:
+
+```bash
+# 1. Install the engine as an Auto-Start Windows Service
+.\target\release\bwp.exe service install
+
+# 2. Start the background service
+.\target\release\bwp.exe service start
+
+# Check the background daemon's status
+.\target\release\bwp.exe status
 ```
 
-### Run
+To stop or remove the service later, simply run `bwp service stop` and `bwp service uninstall`.
+
+### 🖥️ Interacting via CLI / TUI
+
+Once the Windows Service is running, any standard user can interact with the engine.
 
 ```bash
-# Start the daemon (foreground mode)
-cargo run --bin bwp -- start --foreground
+# 📊 Open the Live Ratatui Dashboard (TUI)
+.\target\release\bwp.exe top
 
-# Check status
-cargo run --bin bwp -- status
+# 🎮 Switch dynamic profiles
+.\target\release\bwp.exe profile gaming
+.\target\release\bwp.exe profile streaming
 
-# Add a critical app
-cargo run --bin bwp -- add discord
-
-# Switch profile
-cargo run --bin bwp -- profile gaming
+# ➕ Add a new critical application on-the-fly
+.\target\release\bwp.exe add "zoom.exe"
 ```
 
-### Configuration
+### Configuration (`config.toml`)
 
-Edit `config.toml` in the project root. See the file for detailed inline documentation.
+Edit `config.toml` in the project root to define your limits and profiles. The daemon implements hot-reloading! You don't need to restart the service when you modify the `.toml` file; the engine detects changes seamlessly.
 
-## 🧪 Testing
+---
+
+## 🧪 Testing & Development
 
 ```bash
-# Run all tests
+# Run all asynchronous and integration tests
 cargo test --workspace
 
-# Run with output
-cargo test --workspace -- --nocapture
-```
-
-## 🔧 Development
-
-```bash
-# Format code
-cargo fmt --all
-
-# Run clippy lints
+# Linting
 cargo clippy --workspace --all-targets -- -D warnings
 ```
 

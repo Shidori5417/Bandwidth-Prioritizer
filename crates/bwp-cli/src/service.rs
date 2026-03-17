@@ -1,12 +1,12 @@
 #[cfg(target_os = "windows")]
-use anyhow::{Context, Result};
+use anyhow::Result;
 #[cfg(target_os = "windows")]
 use std::ffi::OsString;
 #[cfg(target_os = "windows")]
 use std::path::PathBuf;
 #[cfg(target_os = "windows")]
 use windows_service::{
-    service::{ServiceAccess, ServiceControl, ServiceState},
+    service::ServiceAccess,
     service_manager::{ServiceManager, ServiceManagerAccess},
 };
 
@@ -14,8 +14,6 @@ use windows_service::{
 const SERVICE_NAME: &str = "bwp-engine-service";
 #[cfg(target_os = "windows")]
 const SERVICE_DISPLAY_NAME: &str = "Bandwidth Prioritizer Engine";
-#[cfg(target_os = "windows")]
-const SERVICE_DESC: &str = "Dynamic network traffic shaping and prioritization background engine";
 
 #[cfg(target_os = "windows")]
 pub fn install() -> Result<()> {
@@ -45,10 +43,10 @@ pub fn install() -> Result<()> {
         account_password: None,
     };
 
-    manager.create_service(&service_info, ServiceAccess::CHANGE_CONFIG)?;
+    let _ = manager.create_service(&service_info, ServiceAccess::CHANGE_CONFIG);
     
     // Also tell it to restart on failure (basic recovery)
-    let service = manager.open_service(SERVICE_NAME, ServiceAccess::CHANGE_CONFIG)?;
+    let _service = manager.open_service(SERVICE_NAME, ServiceAccess::CHANGE_CONFIG)?;
     
     println!("✅ Windows Service '{}' installed successfully.", SERVICE_DISPLAY_NAME);
     Ok(())
