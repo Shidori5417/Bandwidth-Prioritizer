@@ -54,16 +54,16 @@ Kritik uygulamalar (Discord, Zoom, VS Code Live Share vb.) aktifken diğer tüm 
 
 ---
 
-### 🔲 FAZ 2 — Konfigürasyon Motoru (Config Manager)
+### 🚧 FAZ 2 — Konfigürasyon Motoru (Config Manager)
 **Hedef:** Kullanıcı kurallarını yönet.
 
-- [ ] `config.toml` şeması tasarımı
-- [ ] `serde` ile deserializasyon
-- [ ] Kritik uygulama listesi (whitelist)
-- [ ] Throttle hedef değerleri (Kbps / Mbps)
-- [ ] Profil desteği (Gaming, Meeting, Download)
-- [ ] Hot-reload (dosya değişikliğini izle, restart gerektirmez)
-- [ ] **Test:** Geçersiz config senaryoları
+- [x] `config.toml` şeması tasarımı
+- [x] `serde` ile deserializasyon
+- [x] Kritik uygulama listesi (whitelist)
+- [x] Throttle hedef değerleri (Kbps / Mbps)
+- [x] Profil desteği (Gaming, Meeting, Download)
+- [x] Hot-reload (dosya değişikliğini izle, restart gerektirmez)
+- [x] **Test:** Geçersiz config senaryoları
 
 ---
 
