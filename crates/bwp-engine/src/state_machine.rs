@@ -31,9 +31,11 @@ pub struct Engine<C: TrafficController> {
     /// PIDs currently identified as normal apps (throttable)
     normal_pids: HashSet<u32>,
     /// Current engine state
-    state: ThrottleState,
+    pub state: ThrottleState,
+    /// Active profile name (if any)
+    pub active_profile: Option<String>,
     /// Ring buffer of recent events for UI presentation
-    recent_events: VecDeque<String>,
+    pub recent_events: VecDeque<String>,
 }
 
 impl<C: TrafficController + 'static> Engine<C> {
@@ -45,6 +47,7 @@ impl<C: TrafficController + 'static> Engine<C> {
             priority_pids: HashSet::new(),
             normal_pids: HashSet::new(),
             state: ThrottleState::Normal,
+            active_profile: None,
             recent_events: VecDeque::with_capacity(10),
         }
     }
@@ -101,26 +104,68 @@ impl<C: TrafficController + 'static> Engine<C> {
                     }
                 }
 
+                let current_limit_kbps = if let Some(ref profile) = self.active_profile {
+                    config.throttle_limit_for_profile(profile).as_kbps()
+                } else {
+                    config.default_throttle_limit_kbps
+                };
+
                 IpcResponse::StatusPayload {
                     state: self.state,
-                    active_profile: None, // Will be implemented with profile configs
+                    active_profile: self.active_profile.clone(),
                     throttled_pids_count: self.normal_pids.len(), 
                     priority_pids_count: self.priority_pids.len(),
-                    current_limit_kbps: config.default_throttle_limit_kbps,
+                    current_limit_kbps,
                     throttled_apps,
                     recent_events: self.recent_events.iter().cloned().collect(),
                 }
             }
-            IpcCommand::ApplyProfile(_profile_name) => {
-                // To be implemented: Reloading ArcSwap dynamically over IPC
+            IpcCommand::ApplyProfile(profile_name) => {
+                let config = self.config_manager.get_shared_config().load();
+                if config.profiles.contains_key(&profile_name) {
+                    self.active_profile = Some(profile_name.clone());
+                    let msg = format!("Profile '{}' applied.", profile_name);
+                    info!("{}", msg);
+                    self.push_event(msg);
+                    self.re_evaluate_connections().await;
+                    IpcResponse::Ok
+                } else if profile_name.is_empty() || profile_name.eq_ignore_ascii_case("default") || profile_name.eq_ignore_ascii_case("none") {
+                    self.active_profile = None;
+                    let msg = "Profile cleared. Reverting to default configuration.".to_string();
+                    info!("{}", msg);
+                    self.push_event(msg);
+                    self.re_evaluate_connections().await;
+                    IpcResponse::Ok
+                } else {
+                    IpcResponse::Error(format!("Profile '{}' not found", profile_name))
+                }
+            }
+            IpcCommand::AddApp(app) => {
+                let shared_config = self.config_manager.get_shared_config();
+                let config = shared_config.load();
+                let mut new_config = (**config).clone();
+                if !new_config.critical_apps.iter().any(|c| c.eq_ignore_ascii_case(&app)) {
+                    new_config.critical_apps.push(app.clone());
+                    shared_config.store(Arc::new(new_config));
+                    let msg = format!("App '{}' added to critical apps dynamically.", app);
+                    info!("{}", msg);
+                    self.push_event(msg);
+                    self.re_evaluate_connections().await;
+                }
                 IpcResponse::Ok
             }
-            IpcCommand::AddApp(_app) => {
-                // Config mutation will be added
-                IpcResponse::Ok
-            }
-            IpcCommand::RemoveApp(_app) => {
-                // Config mutation will be added
+            IpcCommand::RemoveApp(app) => {
+                let shared_config = self.config_manager.get_shared_config();
+                let config = shared_config.load();
+                let mut new_config = (**config).clone();
+                if let Some(pos) = new_config.critical_apps.iter().position(|x| x.eq_ignore_ascii_case(&app)) {
+                    new_config.critical_apps.remove(pos);
+                    shared_config.store(Arc::new(new_config));
+                    let msg = format!("App '{}' removed from critical apps dynamically.", app);
+                    info!("{}", msg);
+                    self.push_event(msg);
+                    self.re_evaluate_connections().await;
+                }
                 IpcResponse::Ok
             }
             IpcCommand::Stop => {
@@ -144,7 +189,13 @@ impl<C: TrafficController + 'static> Engine<C> {
         // 2. Load latest config O(1) lock-free
         let config = self.config_manager.get_shared_config().load();
         
-        let is_priority = config.critical_apps.iter().any(|c| exe_name.eq_ignore_ascii_case(c));
+        let critical_apps = if let Some(ref profile) = self.active_profile {
+            config.critical_apps_for_profile(profile)
+        } else {
+            config.critical_apps.clone()
+        };
+
+        let is_priority = critical_apps.iter().any(|c| exe_name.eq_ignore_ascii_case(c));
 
         if is_priority {
             if self.priority_pids.insert(pid) {
@@ -160,7 +211,11 @@ impl<C: TrafficController + 'static> Engine<C> {
                 debug!("Normal App Registered: {} (PID: {})", exe_name, pid);
                 if self.state == ThrottleState::PriorityMode {
                     // Apply throttle instantly to this new connection
-                    let limit = config.effective_throttle_limit();
+                    let limit = if let Some(ref profile) = self.active_profile {
+                        config.throttle_limit_for_profile(profile)
+                    } else {
+                        config.effective_throttle_limit()
+                    };
                     let _ = self.controller.send_command(ThrottleCommand::ApplyLimit { pid, limit }).await;
                 }
             }
@@ -191,10 +246,73 @@ impl<C: TrafficController + 'static> Engine<C> {
         self.state = ThrottleState::PriorityMode;
         
         let config = self.config_manager.get_shared_config().load();
-        let limit = config.effective_throttle_limit();
+        let limit = if let Some(ref profile) = self.active_profile {
+            config.throttle_limit_for_profile(profile)
+        } else {
+            config.effective_throttle_limit()
+        };
         
         for &pid in &self.normal_pids {
             let _ = self.controller.send_command(ThrottleCommand::ApplyLimit { pid, limit }).await;
+        }
+    }
+
+    async fn re_evaluate_connections(&mut self) {
+        let config = self.config_manager.get_shared_config().load();
+
+        let critical_apps = if let Some(ref profile) = self.active_profile {
+            config.critical_apps_for_profile(profile)
+        } else {
+            config.critical_apps.clone()
+        };
+
+        let mut to_priority = Vec::new();
+        let mut to_normal = Vec::new();
+
+        for &pid in &self.normal_pids {
+            let exe_name = self.resolve_exe_name(pid);
+            if critical_apps.iter().any(|c| exe_name.eq_ignore_ascii_case(c)) {
+                to_priority.push(pid);
+            }
+        }
+
+        for &pid in &self.priority_pids {
+            let exe_name = self.resolve_exe_name(pid);
+            if !critical_apps.iter().any(|c| exe_name.eq_ignore_ascii_case(c)) {
+                to_normal.push(pid);
+            }
+        }
+
+        for pid in to_priority {
+            self.normal_pids.remove(&pid);
+            self.priority_pids.insert(pid);
+            if self.state == ThrottleState::PriorityMode {
+                let _ = self.controller.send_command(ThrottleCommand::RemoveLimit { pid }).await;
+            }
+        }
+
+        for pid in to_normal {
+            self.priority_pids.remove(&pid);
+            self.normal_pids.insert(pid);
+            // Limit applied below if we stay in or enter PriorityMode
+        }
+
+        if self.priority_pids.is_empty() && self.state == ThrottleState::PriorityMode {
+            // No priority apps remain, exit PriorityMode
+            self.exit_priority_mode().await;
+        } else if !self.priority_pids.is_empty() && self.state != ThrottleState::PriorityMode {
+            // Priority apps present, enter PriorityMode
+            self.enter_priority_mode().await;
+        } else if self.state == ThrottleState::PriorityMode {
+            // Update limits for all normal pids based on the (possibly new) profile/config
+            let limit = if let Some(ref profile) = self.active_profile {
+                config.throttle_limit_for_profile(profile)
+            } else {
+                config.effective_throttle_limit()
+            };
+            for &pid in &self.normal_pids {
+                let _ = self.controller.send_command(ThrottleCommand::ApplyLimit { pid, limit }).await;
+            }
         }
     }
 
