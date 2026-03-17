@@ -159,13 +159,34 @@ pub mod linux {
 
     pub fn bind_server() -> Result<UnixListener> {
         let _ = std::fs::remove_file(SOCKET_PATH);
-        let listener = UnixListener::bind(SOCKET_PATH)?;
         
-        // CHMOD 600 ensuring only the executing user (ideally root) can read/write the socket
+        // Create a secure temporary directory to bind the socket in, mitigating TOCTOU vulnerabilities.
+        // `umask` affects the whole process (thread-unsafe), so creating a private directory is preferred.
+        let temp_dir_path = "/var/run/bwp_tmp_sock_dir";
+        let _ = std::fs::remove_dir_all(temp_dir_path);
+
+        std::fs::create_dir_all(temp_dir_path)?;
+
         use std::os::unix::fs::PermissionsExt;
-        let mut perms = std::fs::metadata(SOCKET_PATH)?.permissions();
-        perms.set_mode(0o600);
-        std::fs::set_permissions(SOCKET_PATH, perms)?;
+        let mut dir_perms = std::fs::metadata(temp_dir_path)?.permissions();
+        dir_perms.set_mode(0o700);
+        std::fs::set_permissions(temp_dir_path, dir_perms)?;
+
+        let temp_socket_path = format!("{}/bwp.sock", temp_dir_path);
+
+        // Bind the socket inside the secure directory
+        let listener = UnixListener::bind(&temp_socket_path)?;
+
+        // Explicitly set socket permissions to 600
+        let mut sock_perms = std::fs::metadata(&temp_socket_path)?.permissions();
+        sock_perms.set_mode(0o600);
+        std::fs::set_permissions(&temp_socket_path, sock_perms)?;
+
+        // Atomically move the socket to its final destination
+        std::fs::rename(&temp_socket_path, SOCKET_PATH)?;
+
+        // Cleanup the temporary directory
+        let _ = std::fs::remove_dir(temp_dir_path);
         
         Ok(listener)
     }
