@@ -1,0 +1,9 @@
+[2m2026-03-17T22:27:09.526358Z[0m [32m INFO[0m [2mbwp_engine[0m[2m:[0m Starting Bandwidth-Prioritizer Engine Daemon...
+[2m2026-03-17T22:27:09.530407Z[0m [33m WARN[0m [2mbwp_monitor::windows[0m[2m:[0m Failed to start ETW listener. Falling back to polling mode. [3me[0m[2m=[0mPlatform API error: ETW Start Failed: EtwNativeError(IoError(Os { code: -2147024891, kind: Uncategorized, message: "Erişim engellendi." }))
+[2m2026-03-17T22:27:09.531705Z[0m [32m INFO[0m [2mbwp_monitor::windows::poll[0m[2m:[0m Graceful fallback to GetExtendedTcpTable polling loop started.
+[2m2026-03-17T22:27:09.532033Z[0m [32m INFO[0m [2mbwp_controller::windows::divert[0m[2m:[0m WinDivert Filter Deployed: false
+[2m2026-03-17T22:27:09.544825Z[0m [32m INFO[0m [2mbwp_engine::ipc_server[0m[2m:[0m Starting Windows Named Pipe IPC Server...
+[2m2026-03-17T22:27:09.544836Z[0m [32m INFO[0m [2mbwp_engine::state_machine[0m[2m:[0m Bandwidth Engine state machine running...
+[2m2026-03-17T22:28:15.858332Z[0m [33m WARN[0m [2mbwp_engine::state_machine[0m[2m:[0m Received Stop command. Shutting down throttle engine.
+[2m2026-03-17T22:28:15.858756Z[0m [32m INFO[0m [2mbwp_engine::state_machine[0m[2m:[0m Graceful shutdown initiated by IPC Stop command.
+[2m2026-03-17T22:28:15.858985Z[0m [33m WARN[0m [2mbwp_engine::state_machine[0m[2m:[0m Engine event stream closed. Engine shutting down.

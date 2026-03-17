@@ -118,9 +118,10 @@ async fn main() -> Result<()> {
         }
         CliCommand::Stop => {
             println!("🛑 Sending stop command to engine...");
-            match send_ipc_and_print(IpcCommand::Stop).await {
+            match stop_engine().await {
                 Ok(_) => {
                     bwp_core::pid::remove_pid().unwrap_or(());
+                    println!("✅ Engine stopped.");
                 }
                 Err(_) => {
                     if let Ok(Some(pid)) = bwp_core::pid::read_pid() {
@@ -184,4 +185,23 @@ async fn send_ipc_and_print(command: IpcCommand) -> Result<()> {
     }
     
     Ok(())
+}
+
+/// Sends Stop to engine; treats both Ok and EOF (pipe close) as success.
+/// Uses a short timeout so CLI doesn't hang if engine is unresponsive.
+async fn stop_engine() -> Result<()> {
+    let mut conn = connect_client().await.context("Failed to connect to bwp-engine. Is the daemon running?")?;
+    conn.send_command(&IpcCommand::Stop).await.context("Failed to send Stop command")?;
+    
+    // Engine may close the pipe before sending a response (race between break + flush).
+    // Either Ok(Some(Ok)) or Ok(None) [EOF] is fine — engine is shutting down.
+    let result = tokio::time::timeout(
+        std::time::Duration::from_secs(3),
+        conn.recv_response(),
+    ).await;
+    
+    match result {
+        Ok(Ok(_)) | Err(_) => Ok(()), // response received OR timeout (engine already dead)
+        Ok(Err(e)) => Err(e.into()),
+    }
 }
