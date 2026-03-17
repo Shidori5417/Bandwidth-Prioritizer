@@ -174,7 +174,7 @@ fn draw_ui(f: &mut ratatui::Frame, status: &Option<IpcResponse>, error: &Option<
 
         for (name, pid, limit) in throttled_apps {
             table_rows.push(Row::new(vec![
-                name.clone(),
+                name.to_string(),
                 pid.to_string(),
                 format!("{} kbps", limit),
             ]));

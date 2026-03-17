@@ -100,7 +100,14 @@ impl ConfigManager {
             .expect("Failed to initialize file watcher");
 
             // Attempt to watch the directory of the config file.
-            let parent_dir = path_clone.parent().unwrap_or(Path::new("."));
+            let parent_dir = match path_clone.parent() {
+                Some(p) if !p.as_os_str().is_empty() => p,
+                _ => {
+                    error!("Cannot determine parent directory for config file {:?}", path_clone);
+                    return;
+                }
+            };
+
             if let Err(e) = watcher.watch(parent_dir, RecursiveMode::NonRecursive) {
                 error!("File watcher failed to attach to directory: {e}");
                 return;
@@ -140,5 +147,40 @@ impl ConfigManager {
                 }
             }
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+
+    #[test]
+    fn test_load_file_invalid_toml() {
+        let temp_dir = std::env::temp_dir();
+        let file_path = temp_dir.join(format!("invalid_config_{}.toml", std::process::id()));
+
+        // Write invalid TOML content
+        let mut file = std::fs::File::create(&file_path).expect("Failed to create temp file");
+        file.write_all(b"[general\nmissing_bracket = true").expect("Failed to write to temp file");
+
+        // Attempt to load the file
+        let result = ConfigManager::load_file(&file_path);
+
+        // Verify it fails with a config error indicating invalid TOML
+        assert!(result.is_err(), "Expected load_file to fail with invalid TOML");
+        match result.unwrap_err() {
+            BwpError::Config(msg) => {
+                assert!(
+                    msg.contains("Invalid TOML in"),
+                    "Error message should mention 'Invalid TOML in', got: {}",
+                    msg
+                );
+            }
+            err => panic!("Expected BwpError::Config, got {:?}", err),
+        }
+
+        // Cleanup
+        let _ = std::fs::remove_file(file_path);
     }
 }

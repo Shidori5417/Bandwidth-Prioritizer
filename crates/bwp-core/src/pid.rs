@@ -7,9 +7,22 @@ use std::fs;
 use std::io::Result;
 use std::path::PathBuf;
 
+#[cfg(test)]
+thread_local! {
+    static MOCK_PID_DIR: std::cell::RefCell<Option<PathBuf>> = const { std::cell::RefCell::new(None) };
+}
+
 #[cfg(target_os = "windows")]
 pub fn get_pid_file_path() -> PathBuf {
-    let mut path = PathBuf::from(std::env::var("LOCALAPPDATA").unwrap_or_else(|_| "C:\\ProgramData".to_string()));
+    #[cfg(test)]
+    if let Some(mock_dir) = MOCK_PID_DIR.with(|m| m.borrow().clone()) {
+        let mut path = mock_dir;
+        path.push("bwp.pid");
+        return path;
+    }
+
+    let base_dir = std::env::var("LOCALAPPDATA").unwrap_or_else(|_| "C:\\ProgramData".to_string());
+    let mut path = PathBuf::from(base_dir);
     path.push("bwp");
     // Ensure directory exists
     let _ = fs::create_dir_all(&path);
@@ -19,6 +32,13 @@ pub fn get_pid_file_path() -> PathBuf {
 
 #[cfg(target_os = "linux")]
 pub fn get_pid_file_path() -> PathBuf {
+    #[cfg(test)]
+    if let Some(mock_dir) = MOCK_PID_DIR.with(|m| m.borrow().clone()) {
+        let mut path = mock_dir;
+        path.push("bwp.pid");
+        return path;
+    }
+
     PathBuf::from("/var/run/bwp.pid")
 }
 
@@ -54,15 +74,122 @@ pub fn remove_pid() -> Result<()> {
 
 /// Checks if a process with the given PID is currently running.
 #[cfg(target_os = "windows")]
-pub fn is_process_running(_pid: u32) -> bool {
-    // In a real implementation we would use `OpenProcess` from the Windows API.
-    // For now, if the file exists and IPC fails, we'll assume it's dead, but this function
-    // acts as a lightweight heuristic. Returning true relies on IPC failure to clean up.
-    true
+pub fn is_process_running(pid: u32) -> bool {
+    use windows::core::HRESULT;
+    use windows::Win32::Foundation::{CloseHandle, ERROR_ACCESS_DENIED, STILL_ACTIVE};
+    use windows::Win32::System::Threading::{
+        GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+
+    // SAFETY: We are calling Windows API functions to query process information.
+    // The handle is properly closed if it's successfully opened.
+    #[allow(unsafe_code)]
+    let handle_result = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) };
+
+    match handle_result {
+        Ok(handle) => {
+            let mut exit_code: u32 = 0;
+            #[allow(unsafe_code)]
+            let result = unsafe { GetExitCodeProcess(handle, &mut exit_code) };
+            #[allow(unsafe_code)]
+            unsafe {
+                let _ = CloseHandle(handle);
+            }
+
+            if result.is_ok() {
+                exit_code == STILL_ACTIVE.0 as u32
+            } else {
+                true // If we can open it but not get exit code, assume it's running
+            }
+        }
+        Err(err) => {
+            // ERROR_ACCESS_DENIED means the process is running but we don't have permission to query it
+            // ERROR_INVALID_PARAMETER usually means the process doesn't exist
+            let hresult: HRESULT = ERROR_ACCESS_DENIED.into();
+            err.code() == hresult
+        }
+    }
 }
 
 #[cfg(target_os = "linux")]
 pub fn is_process_running(pid: u32) -> bool {
     // Check if the process directory exists in procfs
     PathBuf::from(format!("/proc/{}", pid)).exists()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::env;
+    use std::fs;
+    use std::sync::Mutex;
+    use once_cell::sync::Lazy;
+
+    static ENV_MUTEX: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
+
+    fn with_test_env<F>(test: F)
+    where
+        F: FnOnce(&PathBuf),
+    {
+        let _guard = ENV_MUTEX.lock().unwrap();
+
+        let temp_dir = std::env::temp_dir().join(format!("bwp_test_{}", std::process::id()));
+        let _ = fs::create_dir_all(&temp_dir);
+
+        MOCK_PID_DIR.with(|m| {
+            *m.borrow_mut() = Some(temp_dir.clone());
+        });
+
+        let pid_file_path = get_pid_file_path();
+
+        // Run the test
+        test(&pid_file_path);
+
+        // Cleanup
+        MOCK_PID_DIR.with(|m| {
+            *m.borrow_mut() = None;
+        });
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_read_pid_existing() {
+        with_test_env(|pid_file_path| {
+            // Write a valid PID
+            if let Some(parent) = pid_file_path.parent() {
+                let _ = fs::create_dir_all(parent);
+            }
+            fs::write(pid_file_path, "12345\n").unwrap();
+
+            let pid = read_pid().unwrap();
+            assert_eq!(pid, Some(12345));
+        });
+    }
+
+    #[test]
+    fn test_read_pid_non_existing() {
+        with_test_env(|pid_file_path| {
+            // Ensure file doesn't exist
+            if pid_file_path.exists() {
+                fs::remove_file(pid_file_path).unwrap();
+            }
+
+            let pid = read_pid().unwrap();
+            assert_eq!(pid, None);
+        });
+    }
+
+    #[test]
+    fn test_read_pid_invalid_content() {
+        with_test_env(|pid_file_path| {
+            // Write invalid content
+            if let Some(parent) = pid_file_path.parent() {
+                let _ = fs::create_dir_all(parent);
+            }
+            fs::write(pid_file_path, "not_a_pid\n").unwrap();
+
+            let pid = read_pid().unwrap();
+            assert_eq!(pid, None);
+        });
+    }
 }

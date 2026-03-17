@@ -145,12 +145,14 @@ version = "0.1.0"
 dependencies = [
  "arc-swap",
  "notify",
+ "once_cell",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
  "tokio",
  "toml",
  "tracing",
+ "windows 0.61.3",
 ]
 
 [[package]]
