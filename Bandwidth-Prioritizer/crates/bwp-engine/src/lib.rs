@@ -8,5 +8,6 @@
 //! manager (`ArcSwap`).
 
 pub mod state_machine;
+pub mod ipc_server;
 
-pub use state_machine::Engine;
+pub use state_machine::{Engine, EngineEvent};

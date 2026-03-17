@@ -1,6 +1,7 @@
 # Bandwidth-Prioritizer — Progress Tracker
 
 ## Proje Özeti
+
 Kritik uygulamalar (Discord, Zoom, VS Code Live Share vb.) aktifken diğer tüm uygulamaların internet bant genişliğini **dinamik olarak** kısıtlayan, Rust ile yazılmış sistem düzeyinde bir ağ trafiği şekillendirici.
 
 ---
@@ -32,6 +33,7 @@ Kritik uygulamalar (Discord, Zoom, VS Code Live Share vb.) aktifken diğer tüm 
 ## Faz Planı
 
 ### ✅ FAZ 0 — Proje Kurulumu
+
 - [x] Rust workspace yapısı (`Cargo.toml`)
 - [x] Crate mimarisi belirleme (`core`, `monitor`, `controller`, `cli`)
 - [x] CI/CD pipeline (GitHub Actions)
@@ -41,6 +43,7 @@ Kritik uygulamalar (Discord, Zoom, VS Code Live Share vb.) aktifken diğer tüm 
 ---
 
 ### 🚧 FAZ 1 — Süreç İzleyici (Process Monitor)
+
 **Hedef:** Sistemde çalışan süreçleri ve ağ bağlantılarını tespit et.
 
 - [ ] `/proc/net/tcp` & `/proc/net/udp` okuma (Linux)
@@ -55,6 +58,7 @@ Kritik uygulamalar (Discord, Zoom, VS Code Live Share vb.) aktifken diğer tüm 
 ---
 
 ### 🚧 FAZ 2 — Konfigürasyon Motoru (Config Manager)
+
 **Hedef:** Kullanıcı kurallarını yönet.
 
 - [x] `config.toml` şeması tasarımı
@@ -68,19 +72,23 @@ Kritik uygulamalar (Discord, Zoom, VS Code Live Share vb.) aktifken diğer tüm 
 ---
 
 ### 🚧 FAZ 3 — Trafik Kontrolcüsü (Traffic Controller)
+
 **Hedef:** Gerçek bant genişliği kısıtlamasını uygula.
 
 #### Linux
+
 - [ ] `libbpf-rs` ile eBPF entegrasyonu araştırması
 - [x] `tc` (traffic control) komutu ile `htb` qdisc programatik yönetimi
 - [x] Alternatif: `nftables` kuralları ile hız sınırlama
 
 #### Windows
+
 - [ ] Windows Filtering Platform (WFP) API entegrasyonu
 - [x] Windows: `windivert` ile paket arayüzüne (flow-level filter ile) entegrasyon
 - [x] Alternatif: `NetLimiter` benzeri yaklaşım (socket-level)
 
 #### Ortak
+
 - [x] Token Bucket algoritması implementasyonu (hız sınırlayıcı çekirdeği)
 - [x] Per-PID kural ekleme/kaldırma API'si
 - [ ] **Test:** Sanal ağ arayüzü ile entegrasyon testleri
@@ -88,6 +96,7 @@ Kritik uygulamalar (Discord, Zoom, VS Code Live Share vb.) aktifken diğer tüm 
 ---
 
 ### 🚧 FAZ 4 — Throttle Motoru (Throttle Engine)
+
 **Hedef:** Dinamik kısıtlama mantığını işlet.
 
 - [x] State machine: `Normal` → `PriorityMode` → `Normal` (bwp-engine crate)
@@ -99,24 +108,22 @@ Kritik uygulamalar (Discord, Zoom, VS Code Live Share vb.) aktifken diğer tüm 
 
 ---
 
-### 🔲 FAZ 5 — CLI / TUI Arayüzü
-**Hedef:** Kullanıcı dostu yönetim arayüzü.
+### 🚧 FAZ 5 — CLI / Yönetim Katmanı (Entegrasyon)
 
-- [ ] `clap` ile CLI komut yapısı
-  - `bwp start` — daemon başlat
-  - `bwp stop` — daemon durdur
-  - `bwp status` — anlık durum
-  - `bwp add <app>` — kritik uygulamaya ekle
-  - `bwp profile <name>` — profil değiştir
-- [ ] `ratatui` ile gerçek zamanlı TUI
-  - Anlık bant genişliği grafiği
-  - Aktif süreçler & kısıtlama durumu
-  - Log akışı
-- [ ] **Test:** CLI argüman parse testleri
+**Hedef:** CLI ve arka plan daemon (engine) iletişimini sağla.
+
+- [x] Engine içinde IPC Server (Named Pipes / Unix Sockets) & Event birleştirme
+- [ ] `bwp-cli` inşası
+- [ ] CLI'den IPC komutları gönderme
+  - `bwp status`
+  - `bwp set-profile <name>`
+- [ ] `ratatui` ile gerçek zamanlı TUI ve anlık durum ekranı
+- [ ] **Test:** End-to-end (E2E) entegrasyon testleri
 
 ---
 
 ### 🔲 FAZ 6 — Daemon & Sistem Entegrasyonu
+
 **Hedef:** Arka planda çalışan sistem servisi.
 
 - [ ] Linux: `systemd` unit dosyası
@@ -128,6 +135,7 @@ Kritik uygulamalar (Discord, Zoom, VS Code Live Share vb.) aktifken diğer tüm 
 ---
 
 ### 🔲 FAZ 7 — Test, Optimizasyon & Dağıtım
+
 - [ ] End-to-end test senaryoları
 - [ ] Performans profili (CPU < %1, RAM < 20MB hedef)
 - [ ] Paketleme: `.deb`, `.rpm`, Windows installer
@@ -138,32 +146,32 @@ Kritik uygulamalar (Discord, Zoom, VS Code Live Share vb.) aktifken diğer tüm 
 
 ## Bağımlılıklar (Planlanan Crates)
 
-| Crate | Amaç |
-|---|---|
-| `tokio` | Async runtime |
-| `serde` / `serde_toml` | Konfigürasyon yönetimi |
-| `clap` | CLI argüman ayrıştırma |
-| `ratatui` | Terminal kullanıcı arayüzü |
-| `libbpf-rs` | Linux eBPF entegrasyonu |
-| `windows-rs` | Windows WFP API |
-| `tracing` | Yapılandırılmış loglama |
-| `notify` | Dosya izleme (hot-reload) |
-| `thiserror` | Hata yönetimi |
+| Crate                  | Amaç                       |
+| ---------------------- | -------------------------- |
+| `tokio`                | Async runtime              |
+| `serde` / `serde_toml` | Konfigürasyon yönetimi     |
+| `clap`                 | CLI argüman ayrıştırma     |
+| `ratatui`              | Terminal kullanıcı arayüzü |
+| `libbpf-rs`            | Linux eBPF entegrasyonu    |
+| `windows-rs`           | Windows WFP API            |
+| `tracing`              | Yapılandırılmış loglama    |
+| `notify`               | Dosya izleme (hot-reload)  |
+| `thiserror`            | Hata yönetimi              |
 
 ---
 
 ## Güncel Durum
 
-| Faz | Durum | Tamamlanma |
-|---|---|---|
-| FAZ 0 — Kurulum | ✅ Tamamlandı | 100% |
-| FAZ 1 — Süreç İzleyici | 🔲 Başlamadı | 0% |
-| FAZ 2 — Config Motoru | 🔲 Başlamadı | 0% |
-| FAZ 3 — Trafik Kontrolcüsü | 🔲 Başlamadı | 0% |
-| FAZ 4 — Throttle Motoru | 🔲 Başlamadı | 0% |
-| FAZ 5 — CLI / TUI | 🔲 Başlamadı | 0% |
-| FAZ 6 — Daemon | 🔲 Başlamadı | 0% |
-| FAZ 7 — Test & Dağıtım | 🔲 Başlamadı | 0% |
+| Faz                           | Durum         | Tamamlanma |
+| ----------------------------- | ------------- | ---------- |
+| FAZ 0 — Kurulum               | ✅ Tamamlandı | 100%       |
+| FAZ 1 — Süreç İzleyici        | 🔲 Başlamadı  | 0%         |
+| FAZ 2 — Config Motoru         | 🔲 Başlamadı  | 0%         |
+| FAZ 3 — Trafik Kontrolcüsü    | 🔲 Başlamadı  | 0%         |
+| FAZ 4 — Throttle Motoru       | 🔲 Başlamadı  | 0%         |
+| FAZ 5 — CLI / Yönetim Katmanı | 🔲 Başlamadı  | 0%         |
+| FAZ 6 — Daemon                | 🔲 Başlamadı  | 0%         |
+| FAZ 7 — Test & Dağıtım        | 🔲 Başlamadı  | 0%         |
 
 ---
 

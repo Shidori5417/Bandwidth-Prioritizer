@@ -4,8 +4,17 @@ use bwp_core::{BwpResult, MonitorEvent, ThrottleState, BandwidthLimit};
 use bwp_core::manager::ConfigManager;
 use bwp_controller::{TrafficController, ThrottleCommand};
 use dashmap::DashMap;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 use tracing::{info, debug, warn};
+use bwp_core::ipc::{IpcCommand, IpcResponse};
+
+/// A unified event wrapping raw network detections alongside IPC administrative queries.
+pub enum EngineEvent {
+    /// Kernel/ETW detected a network socket change.
+    Monitor(MonitorEvent),
+    /// A local administrator sent an IPC instruction.
+    Ipc(IpcCommand, oneshot::Sender<IpcResponse>),
+}
 
 /// The Core Brain of the Bandwidth Prioritizer.
 pub struct Engine<C: TrafficController> {
@@ -37,24 +46,61 @@ impl<C: TrafficController + 'static> Engine<C> {
         }
     }
 
-    /// Primary event loop processing raw network events from the Monitor driver
-    pub async fn run_event_loop(&mut self, mut monitor_rx: mpsc::Receiver<MonitorEvent>) -> BwpResult<()> {
+    /// Primary event loop processing both IPC requests and raw network events dynamically over a single MPSC stream.
+    pub async fn run_event_loop(&mut self, mut event_rx: mpsc::Receiver<EngineEvent>) -> BwpResult<()> {
         info!("Bandwidth Engine state machine running...");
 
-        while let Some(event) = monitor_rx.recv().await {
+        while let Some(event) = event_rx.recv().await {
             match event {
-                MonitorEvent::ConnectionOpened(info) => {
+                EngineEvent::Monitor(MonitorEvent::ConnectionOpened(info)) => {
                     self.handle_connection_opened(info.pid).await;
                 }
-                MonitorEvent::ConnectionClosed(info) => {
+                EngineEvent::Monitor(MonitorEvent::ConnectionClosed(info)) => {
                     self.handle_connection_closed(info.pid).await;
+                }
+                EngineEvent::Ipc(command, response_tx) => {
+                    let resp = self.handle_ipc_command(command).await;
+                    let _ = response_tx.send(resp);
                 }
             }
         }
 
-        warn!("Monitor event stream closed. Engine shutting down.");
+        warn!("Engine event stream closed. Engine shutting down.");
         let _ = self.controller.send_command(ThrottleCommand::ClearAll).await;
         Ok(())
+    }
+
+    /// Dynamically evaluates CLI/UI administration triggers
+    async fn handle_ipc_command(&mut self, command: IpcCommand) -> IpcResponse {
+        match command {
+            IpcCommand::Status => {
+                let config = self.config_manager.get_shared_config().load();
+                IpcResponse::StatusPayload {
+                    state: self.state,
+                    active_profile: None, // Will be implemented with profile configs
+                    throttled_pids_count: self.normal_pids.len(), 
+                    priority_pids_count: self.priority_pids.len(),
+                    current_limit_kbps: config.default_throttle_limit_kbps,
+                }
+            }
+            IpcCommand::ApplyProfile(_profile_name) => {
+                // To be implemented: Reloading ArcSwap dynamically over IPC
+                IpcResponse::Ok
+            }
+            IpcCommand::AddApp(_app) => {
+                // Config mutation will be added
+                IpcResponse::Ok
+            }
+            IpcCommand::RemoveApp(_app) => {
+                // Config mutation will be added
+                IpcResponse::Ok
+            }
+            IpcCommand::Stop => {
+                warn!("Received Stop command. Shutting down throttle engine.");
+                let _ = self.controller.send_command(ThrottleCommand::ClearAll).await;
+                std::process::exit(0);
+            }
+        }
     }
 
     /// Invoked theoretically when ETW ProcessStop triggers 
