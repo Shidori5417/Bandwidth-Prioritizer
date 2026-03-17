@@ -144,7 +144,7 @@ impl<C: TrafficController + 'static> Engine<C> {
         // 2. Load latest config O(1) lock-free
         let config = self.config_manager.get_shared_config().load();
         
-        let is_priority = config.critical_apps.iter().any(|c| exe_name.eq_ignore_ascii_case(c));
+        let is_priority = config.critical_apps.contains(&exe_name.to_ascii_lowercase());
 
         if is_priority {
             if self.priority_pids.insert(pid) {

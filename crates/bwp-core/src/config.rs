@@ -4,8 +4,17 @@
 //! All configuration is validated at parse time via `serde`.
 
 use crate::types::BandwidthLimit;
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use serde::{Deserialize, Deserializer, Serialize};
+use std::collections::{HashMap, HashSet};
+
+/// Helper to deserialize a sequence of strings into a `HashSet` of lowercased strings.
+fn deserialize_lowercase_set<'de, D>(deserializer: D) -> Result<HashSet<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let vec: Vec<String> = Vec::deserialize(deserializer)?;
+    Ok(vec.into_iter().map(|s| s.to_ascii_lowercase()).collect())
+}
 
 /// Root configuration structure, mirrors `config.toml`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -16,8 +25,8 @@ pub struct AppConfig {
 
     /// List of process names considered "critical" (whitelisted).
     /// When any of these are active, non-critical processes get throttled.
-    #[serde(default)]
-    pub critical_apps: Vec<String>,
+    #[serde(default, deserialize_with = "deserialize_lowercase_set")]
+    pub critical_apps: HashSet<String>,
 
     /// Default throttle limit applied to non-critical processes.
     #[serde(default = "default_throttle_limit")]
@@ -59,8 +68,8 @@ pub struct ProfileConfig {
     /// Optional description for the profile.
     pub description: Option<String>,
     /// Critical apps specific to this profile (merged with global list).
-    #[serde(default)]
-    pub critical_apps: Vec<String>,
+    #[serde(default, deserialize_with = "deserialize_lowercase_set")]
+    pub critical_apps: HashSet<String>,
     /// Throttle limit override for this profile (in Kbps).
     pub throttle_limit_kbps: Option<u64>,
 }
@@ -88,13 +97,11 @@ impl AppConfig {
     /// Returns the combined critical app list for a given profile.
     /// Merges global `critical_apps` with profile-specific ones.
     #[must_use]
-    pub fn critical_apps_for_profile(&self, profile_name: &str) -> Vec<String> {
+    pub fn critical_apps_for_profile(&self, profile_name: &str) -> HashSet<String> {
         let mut apps = self.critical_apps.clone();
         if let Some(profile) = self.profiles.get(profile_name) {
             for app in &profile.critical_apps {
-                if !apps.contains(app) {
-                    apps.push(app.clone());
-                }
+                apps.insert(app.clone());
             }
         }
         apps
@@ -105,11 +112,11 @@ impl Default for AppConfig {
     fn default() -> Self {
         Self {
             general: GeneralConfig::default(),
-            critical_apps: vec![
+            critical_apps: HashSet::from([
                 "discord".to_string(),
                 "zoom".to_string(),
                 "code".to_string(),
-            ],
+            ]),
             default_throttle_limit_kbps: default_throttle_limit(),
             profiles: HashMap::new(),
         }
@@ -158,7 +165,7 @@ mod tests {
             "gaming".to_string(),
             ProfileConfig {
                 description: Some("Low-latency gaming profile".to_string()),
-                critical_apps: vec!["steam.exe".to_string()],
+                critical_apps: HashSet::from(["steam.exe".to_string()]),
                 throttle_limit_kbps: Some(500),
             },
         );
@@ -167,8 +174,8 @@ mod tests {
         assert_eq!(limit.as_kbps(), 500);
 
         let apps = config.critical_apps_for_profile("gaming");
-        assert!(apps.contains(&"steam.exe".to_string()));
-        assert!(apps.contains(&"discord".to_string()));
+        assert!(apps.contains("steam.exe"));
+        assert!(apps.contains("discord"));
     }
 
     #[test]
