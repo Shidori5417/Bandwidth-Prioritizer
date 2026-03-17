@@ -1,0 +1,19 @@
+# Build artifacts
+/target/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Cargo lock is committed for binary crates
+# but if this were a library-only workspace, we'd gitignore it.
+
+# Environment
+.env
+*.log

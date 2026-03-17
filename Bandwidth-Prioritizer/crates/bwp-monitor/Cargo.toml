@@ -1,0 +1,25 @@
+[package]
+name = "bwp-monitor"
+description = "Process and network connection monitoring for Bandwidth-Prioritizer"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+bwp-core = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true }
+tokio-stream = "0.1"
+futures = "0.3"
+
+[target.'cfg(windows)'.dependencies]
+windows = { workspace = true }
+ferrisetw = "1.2"
+parking_lot = "0.12"
+
+[lints]
+workspace = true

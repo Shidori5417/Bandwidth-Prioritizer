@@ -1,0 +1,52 @@
+# Bandwidth-Prioritizer default configuration
+# ─────────────────────────────────────────────
+
+[general]
+# Process monitor polling interval (milliseconds)
+poll_interval_ms = 500
+
+# Log verbosity: trace, debug, info, warn, error
+log_level = "info"
+
+# Optional: log file path (omit for stdout only)
+# log_file = "bwp.log"
+
+# ─── Critical Applications ──────────────────
+# Processes listed here are considered "priority".
+# When any of them are active, all OTHER processes
+# get their bandwidth throttled.
+critical_apps = [
+    "discord",
+    "Discord",
+    "zoom",
+    "Zoom",
+    "code",           # VS Code
+    "Code",
+    "teams",          # Microsoft Teams
+    "Teams",
+    "slack",
+    "Slack",
+]
+
+# ─── Default Throttle Limit ─────────────────
+# Bandwidth cap applied to non-critical processes (in Kbps).
+# 1000 Kbps = 1 Mbps
+default_throttle_limit_kbps = 1000
+
+# ─── Profiles ───────────────────────────────
+# Named presets for quick switching via `bwp profile <name>`.
+
+[profiles.gaming]
+description = "Low-latency gaming — aggressive throttle on background apps"
+critical_apps = ["steam", "epicgameslauncher", "riotclientservices"]
+throttle_limit_kbps = 500
+
+[profiles.meeting]
+description = "Video conferencing — prioritize audio/video streams"
+critical_apps = ["zoom", "teams", "webex", "skype"]
+throttle_limit_kbps = 2000
+
+[profiles.download]
+description = "Bulk downloading — minimal throttle, just deprioritize realtime"
+critical_apps = []
+throttle_limit_kbps = 5000

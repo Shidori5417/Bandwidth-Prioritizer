@@ -1,0 +1,5 @@
+# Clippy configuration
+# Additional clippy overrides beyond workspace lints in Cargo.toml
+
+# Allow these in test code
+[[disallowed-methods]]

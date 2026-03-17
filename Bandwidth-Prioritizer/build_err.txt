@@ -1,0 +1,117 @@
+﻿cargo : warning: unused import: `debug`
+At line:1 char:1
++ cargo check -p bwp-monitor 2>&1 | Out-
+File -Encoding utf8 build_err.t ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecif 
+   ied: (warning: unused import: `debu  
+  g`:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCom 
+   mandError
+ 
+  --> crates\bwp-monitor\src\windows\etw
+.rs:11:15
+   |
+11 | use tracing::{debug, error, info, t
+race};
+   |               ^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (pa
+rt of `#[warn(unused)]`) on by default
+
+warning: unused import: `std::sync::Arc`
+  --> crates\bwp-monitor\src\windows\etw
+.rs:12:5
+   |
+12 | use std::sync::Arc;
+   |     ^^^^^^^^^^^^^^
+
+warning: unused import: `std::time::Dura
+tion`
+  --> crates\bwp-monitor\src\windows\etw
+.rs:13:5
+   |
+13 | use std::time::Duration;
+   |     ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `BwpError`
+ --> crates\bwp-monitor\src\windows\poll
+.rs:7:16
+  |
+7 | use bwp_core::{BwpError, MonitorEven
+t, BwpResult, ConnectionInfo, ProcessInf
+o};
+  |                ^^^^^^^^
+
+warning: unused import: `debug`
+  --> crates\bwp-monitor\src\windows\pol
+l.rs:10:15
+   |
+10 | use tracing::{debug, error, info};
+   |               ^^^^^
+
+warning: unused import: `BwpError`
+  --> crates\bwp-monitor\src\windows\mod
+.rs:13:16
+   |
+13 | use bwp_core::{BwpError, BwpResult,
+ ConnectionInfo, MonitorEvent, ProcessIn
+fo};
+   |                ^^^^^^^^
+
+warning: variable does not need to be mu
+table
+  --> crates\bwp-monitor\src\windows\etw
+.rs:40:29
+   |
+40 |                         let mut par
+ser = Parser::create(record, &schema);
+   |                             ----^^^
+^^^
+   |                             |
+   |                             help: r
+emove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part o
+f `#[warn(unused)]`) on by default
+
+warning: unused result of type `std::thr
+ead::JoinHandle<()>`
+  --> crates\bwp-monitor\src\windows\etw
+.rs:84:5
+   |
+84 | /     std::thread::spawn(move || {
+85 | |         info!("ETW Trace Session 
+'{}' active. Processing events...", trac
+e_name);
+86 | |         
+87 | |         let mut session = trace_s
+ession;
+...  |
+94 | |     });
+   | |_______^
+   |
+   = note: requested on the command line
+ with `-W unused-results`
+
+warning: unused result of type `tokio::t
+ask::JoinHandle<!>`
+  --> crates\bwp-monitor\src\windows\pol
+l.rs:14:5
+   |
+14 | /     tokio::spawn(async move {
+15 | |         info!("Graceful fallback 
+to GetExtendedTcpTable polling loop star
+ted.");
+16 | |
+17 | |         let mut previous_state: V
+ec<ConnectionInfo> = vec![];
+...  |
+47 | |     });
+   | |_______^
+
+warning: `bwp-monitor` (lib) generated 9
+ warnings (run `cargo fix --lib -p bwp-m
+onitor` to apply 7 suggestions)
+    Finished `dev` profile [unoptimized 
++ debuginfo] target(s) in 0.12s
