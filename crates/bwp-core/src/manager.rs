@@ -183,4 +183,95 @@ mod tests {
         // Cleanup
         let _ = std::fs::remove_file(file_path);
     }
+
+    #[test]
+    fn test_new_or_default_non_existent_file() {
+        let temp_dir = std::env::temp_dir();
+        let file_path = temp_dir.join(format!("non_existent_{}.toml", std::process::id()));
+
+        // Ensure file does not exist
+        if file_path.exists() {
+            std::fs::remove_file(&file_path).expect("Failed to remove existing file");
+        }
+
+        let manager = ConfigManager::new_or_default(&file_path);
+        let config = manager.get_shared_config().load();
+
+        // Should match default
+        assert_eq!(config.default_throttle_limit_kbps, AppConfig::default().default_throttle_limit_kbps);
+        assert_eq!(config.critical_apps, AppConfig::default().critical_apps);
+    }
+
+    #[test]
+    fn test_new_or_default_invalid_toml() {
+        let temp_dir = std::env::temp_dir();
+        let file_path = temp_dir.join(format!("invalid_or_default_{}.toml", std::process::id()));
+
+        // Write invalid TOML
+        std::fs::write(&file_path, "invalid = [toml").expect("Failed to write temp file");
+
+        let manager = ConfigManager::new_or_default(&file_path);
+        let config = manager.get_shared_config().load();
+
+        // Should fall back to default
+        assert_eq!(config.default_throttle_limit_kbps, AppConfig::default().default_throttle_limit_kbps);
+
+        let _ = std::fs::remove_file(file_path);
+    }
+
+    #[test]
+    fn test_new_or_default_valid_file() {
+        let temp_dir = std::env::temp_dir();
+        let file_path = temp_dir.join(format!("valid_config_{}.toml", std::process::id()));
+
+        let custom_config = r#"
+            default_throttle_limit_kbps = 5000
+            critical_apps = ["test_app"]
+        "#;
+        std::fs::write(&file_path, custom_config).expect("Failed to write temp file");
+
+        let manager = ConfigManager::new_or_default(&file_path);
+        let config = manager.get_shared_config().load();
+
+        assert_eq!(config.default_throttle_limit_kbps, 5000);
+        assert!(config.critical_apps.contains(&"test_app".to_string()));
+
+        let _ = std::fs::remove_file(file_path);
+    }
+
+    #[tokio::test]
+    async fn test_hot_reload_success() {
+        let temp_dir = std::env::temp_dir();
+        let file_path = temp_dir.join(format!("hot_reload_{}.toml", std::process::id()));
+
+        // Initial config
+        let initial_config = "default_throttle_limit_kbps = 1000";
+        std::fs::write(&file_path, initial_config).expect("Failed to write temp file");
+
+        let manager = ConfigManager::new_or_default(&file_path);
+        assert_eq!(manager.get_shared_config().load().default_throttle_limit_kbps, 1000);
+
+        // Start hot-reload task
+        manager.spawn_hot_reload_task();
+
+        // Update config
+        let updated_config = "default_throttle_limit_kbps = 9999";
+        // Small delay to ensure the watcher is ready (though notify might be slow to attach)
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        std::fs::write(&file_path, updated_config).expect("Failed to write updated file");
+
+        // Wait for hot-reload: 500ms debounce + 50ms sleep + some buffer
+        let mut success = false;
+        for _ in 0..20 {
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            if manager.get_shared_config().load().default_throttle_limit_kbps == 9999 {
+                success = true;
+                break;
+            }
+        }
+
+        assert!(success, "Configuration was not hot-reloaded within 2 seconds");
+
+        let _ = std::fs::remove_file(file_path);
+    }
 }
