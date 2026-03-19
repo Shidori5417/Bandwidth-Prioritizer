@@ -38,11 +38,17 @@ fn copy_windivert_dll() {
                         }
                     }
                     // Found it — also emit link search path
-                    println!("cargo:rustc-link-search=native={}", entry.path().join("out").display());
+                    println!(
+                        "cargo:rustc-link-search=native={}",
+                        entry.path().join("out").display()
+                    );
                     return;
                 }
             }
-            println!("cargo:warning=WinDivert.dll not found in {}", build_dir.display());
+            println!(
+                "cargo:warning=WinDivert.dll not found in {}",
+                build_dir.display()
+            );
         }
         Err(e) => println!("cargo:warning=Cannot scan build dir: {}", e),
     }

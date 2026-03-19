@@ -79,7 +79,8 @@ impl<S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin> IpcConnection<S> {
         let mut buf = vec![0u8; len as usize];
         let _ = self.stream.read_exact(&mut buf).await?;
 
-        let msg = serde_json::from_slice(&buf).map_err(|e| Error::new(ErrorKind::InvalidData, e))?;
+        let msg =
+            serde_json::from_slice(&buf).map_err(|e| Error::new(ErrorKind::InvalidData, e))?;
         Ok(Some(msg))
     }
 
@@ -118,8 +119,10 @@ impl<S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin> IpcConnection<S> {
 #[cfg(target_os = "windows")]
 pub mod windows {
     use super::*;
-    use tokio::net::windows::named_pipe::{ClientOptions, NamedPipeClient, NamedPipeServer, ServerOptions};
-    
+    use tokio::net::windows::named_pipe::{
+        ClientOptions, NamedPipeClient, NamedPipeServer, ServerOptions,
+    };
+
     // Windows constants for named pipe
     pub const PIPE_NAME: &str = r"\\.\pipe\BandwidthPrioritizerIpc";
 
@@ -148,7 +151,7 @@ pub mod windows {
 pub mod linux {
     use super::*;
     use tokio::net::{UnixListener, UnixStream};
-    
+
     // Unix Socket path
     pub const SOCKET_PATH: &str = "/var/run/bwp.sock";
 
@@ -159,18 +162,20 @@ pub mod linux {
 
     pub fn bind_server() -> Result<UnixListener> {
         let _ = std::fs::remove_file(SOCKET_PATH);
-        
+
         // Create a secure temporary directory to bind the socket in, mitigating TOCTOU vulnerabilities.
-        // `umask` affects the whole process (thread-unsafe), so creating a private directory is preferred.
-        let temp_dir_path = "/var/run/bwp_tmp_sock_dir";
-        let _ = std::fs::remove_dir_all(temp_dir_path);
+        // We use the PID to make the path less predictable and DirBuilder for atomic 700 permissions.
+        use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
+        let temp_dir_path = format!("/var/run/bwp_sock_{}", std::process::id());
 
-        std::fs::create_dir_all(temp_dir_path)?;
+        // Ensure no leftover from a previous crash
+        let _ = std::fs::remove_dir_all(&temp_dir_path);
 
-        use std::os::unix::fs::PermissionsExt;
-        let mut dir_perms = std::fs::metadata(temp_dir_path)?.permissions();
-        dir_perms.set_mode(0o700);
-        std::fs::set_permissions(temp_dir_path, dir_perms)?;
+        // Atomic create with 700. If an attacker creates a symlink between remove and create,
+        // create() will fail with AlreadyExists because we use create() not create_dir_all().
+        std::fs::DirBuilder::new()
+            .mode(0o700)
+            .create(&temp_dir_path)?;
 
         let temp_socket_path = format!("{}/bwp.sock", temp_dir_path);
 
@@ -187,7 +192,56 @@ pub mod linux {
 
         // Cleanup the temporary directory
         let _ = std::fs::remove_dir(temp_dir_path);
-        
+
         Ok(listener)
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod tests {
+    use super::linux::*;
+    use std::fs;
+    use std::os::unix::fs::{PermissionsExt, symlink};
+
+    #[test]
+    fn test_secure_dir_creation() {
+        let temp_dir_path = format!("/tmp/bwp_test_sock_{}", std::process::id());
+        let _ = fs::remove_dir_all(&temp_dir_path);
+
+        // Test normal creation
+        std::fs::DirBuilder::new()
+            .mode(0o700)
+            .create(&temp_dir_path)
+            .expect("Should create directory");
+
+        let metadata = fs::metadata(&temp_dir_path).unwrap();
+        assert!(metadata.is_dir());
+        assert_eq!(metadata.permissions().mode() & 0o777, 0o700);
+
+        fs::remove_dir_all(&temp_dir_path).unwrap();
+    }
+
+    #[test]
+    fn test_create_fails_on_existing_symlink() {
+        let target_dir = "/tmp/bwp_test_target";
+        let link_path = format!("/tmp/bwp_test_link_{}", std::process::id());
+
+        let _ = fs::remove_dir_all(target_dir);
+        let _ = fs::remove_file(&link_path);
+
+        fs::create_dir_all(target_dir).unwrap();
+        symlink(target_dir, &link_path).unwrap();
+
+        // DirBuilder::create() should fail if the path is an existing symlink
+        let result = std::fs::DirBuilder::new().mode(0o700).create(&link_path);
+
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().kind(),
+            std::io::ErrorKind::AlreadyExists
+        );
+
+        let _ = fs::remove_dir_all(target_dir);
+        let _ = fs::remove_file(&link_path);
     }
 }

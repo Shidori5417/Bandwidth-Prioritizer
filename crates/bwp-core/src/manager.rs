@@ -62,9 +62,8 @@ impl ConfigManager {
             BwpError::Config(format!("Could not read file {}: {}", path.display(), e))
         })?;
 
-        let config: AppConfig = toml::from_str(&content).map_err(|e| {
-            BwpError::Config(format!("Invalid TOML in {}: {}", path.display(), e))
-        })?;
+        let config: AppConfig = toml::from_str(&content)
+            .map_err(|e| BwpError::Config(format!("Invalid TOML in {}: {}", path.display(), e)))?;
 
         Ok(config)
     }
@@ -89,21 +88,25 @@ impl ConfigManager {
         // Standard library thread because `notify::RecommendedWatcher` is synchronous/blocking in its callback.
         // We bridge it to the async world via a tokio channel.
         std::thread::spawn(move || {
-            let mut watcher = notify::recommended_watcher(move |res: Result<Event, notify::Error>| {
-                if let Ok(event) = res {
-                    if event.kind.is_modify() || event.kind.is_create() {
-                        // Send a signal into the sync->async bridge
-                        let _ = tx.blocking_send(());
+            let mut watcher =
+                notify::recommended_watcher(move |res: Result<Event, notify::Error>| {
+                    if let Ok(event) = res {
+                        if event.kind.is_modify() || event.kind.is_create() {
+                            // Send a signal into the sync->async bridge
+                            let _ = tx.blocking_send(());
+                        }
                     }
-                }
-            })
-            .expect("Failed to initialize file watcher");
+                })
+                .expect("Failed to initialize file watcher");
 
             // Attempt to watch the directory of the config file.
             let parent_dir = match path_clone.parent() {
                 Some(p) if !p.as_os_str().is_empty() => p,
                 _ => {
-                    error!("Cannot determine parent directory for config file {:?}", path_clone);
+                    error!(
+                        "Cannot determine parent directory for config file {:?}",
+                        path_clone
+                    );
                     return;
                 }
             };
@@ -162,13 +165,17 @@ mod tests {
 
         // Write invalid TOML content
         let mut file = std::fs::File::create(&file_path).expect("Failed to create temp file");
-        file.write_all(b"[general\nmissing_bracket = true").expect("Failed to write to temp file");
+        file.write_all(b"[general\nmissing_bracket = true")
+            .expect("Failed to write to temp file");
 
         // Attempt to load the file
         let result = ConfigManager::load_file(&file_path);
 
         // Verify it fails with a config error indicating invalid TOML
-        assert!(result.is_err(), "Expected load_file to fail with invalid TOML");
+        assert!(
+            result.is_err(),
+            "Expected load_file to fail with invalid TOML"
+        );
         match result.unwrap_err() {
             BwpError::Config(msg) => {
                 assert!(

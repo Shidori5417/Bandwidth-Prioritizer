@@ -25,7 +25,7 @@ pub trait TrafficController: Send + Sync {
     /// Send a throttle command to the engine. This pushes the update
     /// as an event to the underlying networking thread without blocking.
     async fn send_command(&self, command: ThrottleCommand) -> BwpResult<()>;
-    
+
     /// Returns the list of PIDs currently being throttled, and their limits.
     async fn active_rules(&self) -> BwpResult<Vec<(u32, BandwidthLimit)>>;
 }

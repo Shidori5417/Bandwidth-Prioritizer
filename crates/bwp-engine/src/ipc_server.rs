@@ -1,9 +1,9 @@
 use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot};
-use tracing::{info, error};
+use tracing::{error, info};
 
-use bwp_core::ipc::{IpcCommand, IpcResponse, IpcConnection};
 use crate::state_machine::EngineEvent;
+use bwp_core::ipc::{IpcCommand, IpcConnection, IpcResponse};
 
 #[cfg(target_os = "windows")]
 use bwp_core::ipc::windows::{bind_server, loop_server};
@@ -24,7 +24,7 @@ pub async fn start_ipc_server(engine_tx: mpsc::Sender<EngineEvent>) {
 #[cfg(target_os = "windows")]
 async fn run_windows_ipc_server(engine_tx: mpsc::Sender<EngineEvent>) {
     info!("Starting Windows Named Pipe IPC Server...");
-    
+
     // First instance binding
     let mut server = match bind_server() {
         Ok(s) => s,
@@ -94,16 +94,20 @@ async fn run_linux_ipc_server(engine_tx: mpsc::Sender<EngineEvent>) {
     }
 }
 
-async fn handle_ipc_connection<S>(mut conn: IpcConnection<S>, engine_tx: mpsc::Sender<EngineEvent>) 
-where 
-    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin 
+async fn handle_ipc_connection<S>(mut conn: IpcConnection<S>, engine_tx: mpsc::Sender<EngineEvent>)
+where
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
 {
     // Wait for the payload
     match conn.recv_command().await {
         Ok(Some(command)) => {
             // Forward it to the Engine
             let (resp_tx, resp_rx) = oneshot::channel();
-            if engine_tx.send(EngineEvent::Ipc(command, resp_tx)).await.is_err() {
+            if engine_tx
+                .send(EngineEvent::Ipc(command, resp_tx))
+                .await
+                .is_err()
+            {
                 error!("Engine event queue is closed.");
                 return;
             }

@@ -5,9 +5,9 @@
 //! Assumes CAP_NET_ADMIN privileges.
 
 use crate::traits::{ThrottleCommand, TrafficController};
-use bwp_core::{BandwidthLimit, BwpResult, BwpError};
+use bwp_core::{BandwidthLimit, BwpError, BwpResult};
 use std::sync::Arc;
-use tokio::sync::{mpsc, RwLock};
+use tokio::sync::{RwLock, mpsc};
 
 pub struct LinuxController {
     command_tx: mpsc::Sender<ThrottleCommand>,
@@ -31,9 +31,10 @@ impl LinuxController {
 
 impl TrafficController for LinuxController {
     async fn send_command(&self, command: ThrottleCommand) -> BwpResult<()> {
-        self.command_tx.send(command).await.map_err(|e| {
-            BwpError::Controller(format!("Linux Controller Queue closed: {}", e))
-        })
+        self.command_tx
+            .send(command)
+            .await
+            .map_err(|e| BwpError::Controller(format!("Linux Controller Queue closed: {}", e)))
     }
 
     async fn active_rules(&self) -> BwpResult<Vec<(u32, BandwidthLimit)>> {

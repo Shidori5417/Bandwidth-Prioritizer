@@ -3,15 +3,15 @@
 //! Generates a BPF filter strictly scoped to throttled PIDs.
 //! Flow-based interception ensures whitelisted (unthrottled) PIDs bypass user-space.
 
-use crate::traits::ThrottleCommand;
 use crate::token_bucket::TokenBucket;
+use crate::traits::ThrottleCommand;
 use bwp_core::{BandwidthLimit, BwpError, BwpResult};
-use std::sync::Arc;
 use std::collections::HashMap;
-use tokio::sync::{mpsc, RwLock};
-use tracing::{info, debug, warn};
-use windivert::{WinDivert, layer::NetworkLayer};
+use std::sync::Arc;
+use tokio::sync::{RwLock, mpsc};
+use tracing::{debug, info, warn};
 use windivert::prelude::WinDivertFlags;
+use windivert::{WinDivert, layer::NetworkLayer};
 
 // Reconstruct a WinDivert BPF string matching *only* the PIDs we care about.
 // `outbound and (pid == 1000 or pid == 2000)`
@@ -20,32 +20,31 @@ fn build_filter_string(pids: Vec<u32>) -> String {
     if pids.is_empty() {
         return "false".to_string(); // Do not intercept anything.
     }
-    
+
     let checks: Vec<String> = pids.iter().map(|p| format!("pid == {}", p)).collect();
     format!("outbound and ({})", checks.join(" or "))
 }
 
 pub fn run_windivert_engine(
     mut command_rx: mpsc::Receiver<ThrottleCommand>,
-    active_rules_lock: Arc<RwLock<Vec<(u32, BandwidthLimit)>>>
+    active_rules_lock: Arc<RwLock<Vec<(u32, BandwidthLimit)>>>,
 ) -> BwpResult<()> {
-
     // Token buckets mapped directly by PID (Flow-Level throttling).
     let mut buckets: HashMap<u32, TokenBucket> = HashMap::new();
     let mut throttled_pids: Vec<u32> = Vec::new();
-    
+
     // We start with a bypass rule.
     let mut filter = "false".to_string();
     let priority: i16 = 0;
-    
+
     // Main execution loop:
-    // This loop dynamically tears down and re-initializes WinDivert 
+    // This loop dynamically tears down and re-initializes WinDivert
     // exclusively when the filter string legitimately changes.
     loop {
         info!("WinDivert Filter Deployed: {}", filter);
         // Using "false" throws an invalid parameter error in WinDivert if instantiated,
         // so we'll suspend WinDivert instantiation completely if the whitelist implies 0 intercepts.
-        
+
         let mut wd: Option<WinDivert<NetworkLayer>> = None;
         if filter != "false" {
             wd = match WinDivert::network(&filter, priority, WinDivertFlags::new()) {
@@ -56,9 +55,9 @@ pub fn run_windivert_engine(
                 }
             };
         }
-        
+
         let mut filter_changed = false;
-        
+
         // Loop polling network packets, and yielding periodically to check command mailbox.
         loop {
             // Process commands asynchronously from the Controller Katmani.
@@ -93,7 +92,7 @@ pub fn run_windivert_engine(
             if filter_changed {
                 // Compile the new PID strict filter.
                 filter = build_filter_string(throttled_pids.clone());
-                
+
                 // Write the cache logic back to RwLock so readers can see the latest state.
                 let mut rules_snapshot = active_rules_lock.blocking_write();
                 rules_snapshot.clear();
@@ -103,7 +102,7 @@ pub fn run_windivert_engine(
                         // rules_snapshot.push((*pid, BandwidthLimit::from_bytes(0 /*tb.limit*/)));
                     }
                 }
-                
+
                 // Exit inner packet loop to rebuild `WinDivert` wrapper with new BPF schema.
                 break;
             }
@@ -112,11 +111,11 @@ pub fn run_windivert_engine(
             // If no `wd` handle is open (whitelist phase), sleep and poll commands.
             if let Some(ref handle) = wd {
                 let mut packet_buf = vec![0u8; 65535];
-                
+
                 // Receive synchronously with a short timeout.
                 // We don't want to get blocked indefinitely if the network is silent.
-                /* 
-                  WinDivert crate has recv methods. 
+                /*
+                  WinDivert crate has recv methods.
                   Implementation specifics depend on the precise version of windivert rust.
                 */
                 // For instance: if `recv` grabs a payload, we identify its PID via WinDivertAddress.
