@@ -7,7 +7,7 @@
 //! via a lock-free `DashMap` cache and checking against the zero-cost config
 //! manager (`ArcSwap`).
 
-pub mod state_machine;
 pub mod ipc_server;
+pub mod state_machine;
 
 pub use state_machine::{Engine, EngineEvent};

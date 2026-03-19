@@ -1,12 +1,12 @@
+use bwp_controller::{ThrottleCommand, TrafficController};
+use bwp_core::ipc::{IpcCommand, IpcResponse};
+use bwp_core::manager::ConfigManager;
+use bwp_core::{BandwidthLimit, BwpResult, MonitorEvent, ThrottleState};
+use dashmap::DashMap;
 use std::collections::{HashSet, VecDeque};
 use std::sync::Arc;
-use bwp_core::{BwpResult, MonitorEvent, ThrottleState, BandwidthLimit};
-use bwp_core::manager::ConfigManager;
-use bwp_controller::{TrafficController, ThrottleCommand};
-use dashmap::DashMap;
 use tokio::sync::{mpsc, oneshot};
-use tracing::{info, debug, warn};
-use bwp_core::ipc::{IpcCommand, IpcResponse};
+use tracing::{debug, info, warn};
 
 /// A unified event wrapping raw network detections alongside IPC administrative queries.
 pub enum EngineEvent {
@@ -60,7 +60,10 @@ impl<C: TrafficController + 'static> Engine<C> {
     }
 
     /// Primary event loop processing both IPC requests and raw network events dynamically over a single MPSC stream.
-    pub async fn run_event_loop(&mut self, mut event_rx: mpsc::Receiver<EngineEvent>) -> BwpResult<()> {
+    pub async fn run_event_loop(
+        &mut self,
+        mut event_rx: mpsc::Receiver<EngineEvent>,
+    ) -> BwpResult<()> {
         info!("Bandwidth Engine state machine running...");
 
         while let Some(event) = event_rx.recv().await {
@@ -84,7 +87,10 @@ impl<C: TrafficController + 'static> Engine<C> {
         }
 
         warn!("Engine event stream closed. Engine shutting down.");
-        let _ = self.controller.send_command(ThrottleCommand::ClearAll).await;
+        let _ = self
+            .controller
+            .send_command(ThrottleCommand::ClearAll)
+            .await;
         Ok(())
     }
 
@@ -93,7 +99,7 @@ impl<C: TrafficController + 'static> Engine<C> {
         match command {
             IpcCommand::Status => {
                 let config = self.config_manager.get_shared_config().load();
-                
+
                 // Build throttled apps list
                 let mut throttled_apps = Vec::new();
                 if self.state == ThrottleState::PriorityMode {
@@ -113,7 +119,7 @@ impl<C: TrafficController + 'static> Engine<C> {
                 IpcResponse::StatusPayload {
                     state: self.state,
                     active_profile: self.active_profile.clone(),
-                    throttled_pids_count: self.normal_pids.len(), 
+                    throttled_pids_count: self.normal_pids.len(),
                     priority_pids_count: self.priority_pids.len(),
                     current_limit_kbps,
                     throttled_apps,
@@ -129,7 +135,10 @@ impl<C: TrafficController + 'static> Engine<C> {
                     self.push_event(msg);
                     self.re_evaluate_connections().await;
                     IpcResponse::Ok
-                } else if profile_name.is_empty() || profile_name.eq_ignore_ascii_case("default") || profile_name.eq_ignore_ascii_case("none") {
+                } else if profile_name.is_empty()
+                    || profile_name.eq_ignore_ascii_case("default")
+                    || profile_name.eq_ignore_ascii_case("none")
+                {
                     self.active_profile = None;
                     let msg = "Profile cleared. Reverting to default configuration.".to_string();
                     info!("{}", msg);
@@ -144,7 +153,11 @@ impl<C: TrafficController + 'static> Engine<C> {
                 let shared_config = self.config_manager.get_shared_config();
                 let config = shared_config.load();
                 let mut new_config = (**config).clone();
-                if !new_config.critical_apps.iter().any(|c| c.eq_ignore_ascii_case(&app)) {
+                if !new_config
+                    .critical_apps
+                    .iter()
+                    .any(|c| c.eq_ignore_ascii_case(&app))
+                {
                     new_config.critical_apps.push(app.clone());
                     shared_config.store(Arc::new(new_config));
                     let msg = format!("App '{}' added to critical apps dynamically.", app);
@@ -158,7 +171,11 @@ impl<C: TrafficController + 'static> Engine<C> {
                 let shared_config = self.config_manager.get_shared_config();
                 let config = shared_config.load();
                 let mut new_config = (**config).clone();
-                if let Some(pos) = new_config.critical_apps.iter().position(|x| x.eq_ignore_ascii_case(&app)) {
+                if let Some(pos) = new_config
+                    .critical_apps
+                    .iter()
+                    .position(|x| x.eq_ignore_ascii_case(&app))
+                {
                     new_config.critical_apps.remove(pos);
                     shared_config.store(Arc::new(new_config));
                     let msg = format!("App '{}' removed from critical apps dynamically.", app);
@@ -170,13 +187,16 @@ impl<C: TrafficController + 'static> Engine<C> {
             }
             IpcCommand::Stop => {
                 warn!("Received Stop command. Shutting down throttle engine.");
-                let _ = self.controller.send_command(ThrottleCommand::ClearAll).await;
+                let _ = self
+                    .controller
+                    .send_command(ThrottleCommand::ClearAll)
+                    .await;
                 IpcResponse::Ok
             }
         }
     }
 
-    /// Invoked theoretically when ETW ProcessStop triggers 
+    /// Invoked theoretically when ETW ProcessStop triggers
     /// (to be wired securely alongside network events)
     pub fn drop_process_from_cache(&self, pid: u32) {
         self.pid_cache.remove(&pid);
@@ -185,17 +205,19 @@ impl<C: TrafficController + 'static> Engine<C> {
     async fn handle_connection_opened(&mut self, pid: u32) {
         // 1. Resolve Name O(1) mostly
         let exe_name = self.resolve_exe_name(pid);
-        
+
         // 2. Load latest config O(1) lock-free
         let config = self.config_manager.get_shared_config().load();
-        
+
         let critical_apps = if let Some(ref profile) = self.active_profile {
             config.critical_apps_for_profile(profile)
         } else {
             config.critical_apps.clone()
         };
 
-        let is_priority = critical_apps.iter().any(|c| exe_name.eq_ignore_ascii_case(c));
+        let is_priority = critical_apps
+            .iter()
+            .any(|c| exe_name.eq_ignore_ascii_case(c));
 
         if is_priority {
             if self.priority_pids.insert(pid) {
@@ -216,7 +238,10 @@ impl<C: TrafficController + 'static> Engine<C> {
                     } else {
                         config.effective_throttle_limit()
                     };
-                    let _ = self.controller.send_command(ThrottleCommand::ApplyLimit { pid, limit }).await;
+                    let _ = self
+                        .controller
+                        .send_command(ThrottleCommand::ApplyLimit { pid, limit })
+                        .await;
                 }
             }
         }
@@ -225,7 +250,10 @@ impl<C: TrafficController + 'static> Engine<C> {
     async fn handle_connection_closed(&mut self, pid: u32) {
         if self.normal_pids.remove(&pid) {
             if self.state == ThrottleState::PriorityMode {
-                let _ = self.controller.send_command(ThrottleCommand::RemoveLimit { pid }).await;
+                let _ = self
+                    .controller
+                    .send_command(ThrottleCommand::RemoveLimit { pid })
+                    .await;
             }
         }
 
@@ -240,20 +268,26 @@ impl<C: TrafficController + 'static> Engine<C> {
     }
 
     async fn enter_priority_mode(&mut self) {
-        let msg = format!("Engaging Priority Mode! Throttling {} normal background processes.", self.normal_pids.len());
+        let msg = format!(
+            "Engaging Priority Mode! Throttling {} normal background processes.",
+            self.normal_pids.len()
+        );
         info!("{}", msg);
         self.push_event(msg);
         self.state = ThrottleState::PriorityMode;
-        
+
         let config = self.config_manager.get_shared_config().load();
         let limit = if let Some(ref profile) = self.active_profile {
             config.throttle_limit_for_profile(profile)
         } else {
             config.effective_throttle_limit()
         };
-        
+
         for &pid in &self.normal_pids {
-            let _ = self.controller.send_command(ThrottleCommand::ApplyLimit { pid, limit }).await;
+            let _ = self
+                .controller
+                .send_command(ThrottleCommand::ApplyLimit { pid, limit })
+                .await;
         }
     }
 
@@ -271,14 +305,20 @@ impl<C: TrafficController + 'static> Engine<C> {
 
         for &pid in &self.normal_pids {
             let exe_name = self.resolve_exe_name(pid);
-            if critical_apps.iter().any(|c| exe_name.eq_ignore_ascii_case(c)) {
+            if critical_apps
+                .iter()
+                .any(|c| exe_name.eq_ignore_ascii_case(c))
+            {
                 to_priority.push(pid);
             }
         }
 
         for &pid in &self.priority_pids {
             let exe_name = self.resolve_exe_name(pid);
-            if !critical_apps.iter().any(|c| exe_name.eq_ignore_ascii_case(c)) {
+            if !critical_apps
+                .iter()
+                .any(|c| exe_name.eq_ignore_ascii_case(c))
+            {
                 to_normal.push(pid);
             }
         }
@@ -287,7 +327,10 @@ impl<C: TrafficController + 'static> Engine<C> {
             self.normal_pids.remove(&pid);
             self.priority_pids.insert(pid);
             if self.state == ThrottleState::PriorityMode {
-                let _ = self.controller.send_command(ThrottleCommand::RemoveLimit { pid }).await;
+                let _ = self
+                    .controller
+                    .send_command(ThrottleCommand::RemoveLimit { pid })
+                    .await;
             }
         }
 
@@ -311,7 +354,10 @@ impl<C: TrafficController + 'static> Engine<C> {
                 config.effective_throttle_limit()
             };
             for &pid in &self.normal_pids {
-                let _ = self.controller.send_command(ThrottleCommand::ApplyLimit { pid, limit }).await;
+                let _ = self
+                    .controller
+                    .send_command(ThrottleCommand::ApplyLimit { pid, limit })
+                    .await;
             }
         }
     }
@@ -321,7 +367,10 @@ impl<C: TrafficController + 'static> Engine<C> {
         info!("{}", msg);
         self.push_event(msg);
         self.state = ThrottleState::Normal;
-        let _ = self.controller.send_command(ThrottleCommand::ClearAll).await;
+        let _ = self
+            .controller
+            .send_command(ThrottleCommand::ClearAll)
+            .await;
     }
 
     // Lightweight mock resolving logic

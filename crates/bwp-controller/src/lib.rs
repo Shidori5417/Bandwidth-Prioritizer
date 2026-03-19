@@ -4,8 +4,8 @@
 //! platforms. The controller layer receives `ThrottleCommand`s and dispatches
 //! them to the platform-specific backend (WinDivert on Windows, `tc` on Linux).
 
-pub mod traits;
 pub mod token_bucket;
+pub mod traits;
 
 #[cfg(target_os = "windows")]
 pub mod windows;
@@ -19,4 +19,4 @@ pub use windows::WindowsController;
 #[cfg(target_os = "linux")]
 pub use linux::LinuxController;
 
-pub use traits::{TrafficController, ThrottleCommand};
+pub use traits::{ThrottleCommand, TrafficController};

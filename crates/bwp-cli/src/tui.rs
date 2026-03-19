@@ -3,14 +3,14 @@ use bwp_core::ipc::{IpcCommand, IpcResponse};
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use ratatui::{
+    Terminal,
     backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout},
     style::{Color, Style},
     widgets::{Block, Borders, Paragraph, Row, Table},
-    Terminal,
 };
 use std::{io, time::Duration};
 use tokio::time::Instant;
@@ -75,7 +75,9 @@ async fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Resul
                                 current_status = Some(resp);
                                 error_msg = None;
                             }
-                            Ok(None) => error_msg = Some("Connection closed by engine.".to_string()),
+                            Ok(None) => {
+                                error_msg = Some("Connection closed by engine.".to_string())
+                            }
                             Err(e) => error_msg = Some(format!("Error receiving response: {}", e)),
                         }
                     }
@@ -130,7 +132,11 @@ fn draw_ui(f: &mut ratatui::Frame, status: &Option<IpcResponse>, error: &Option<
     if let Some(err) = error {
         let header = Paragraph::new(format!(" Error: {} ", err))
             .style(Style::default().fg(Color::Red))
-            .block(Block::default().borders(Borders::ALL).title(" Bandwidth-Prioritizer "));
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(" Bandwidth-Prioritizer "),
+            );
         f.render_widget(header, chunks[0]);
     } else if let Some(IpcResponse::StatusPayload {
         state,
@@ -140,19 +146,30 @@ fn draw_ui(f: &mut ratatui::Frame, status: &Option<IpcResponse>, error: &Option<
     {
         let prof_str = active_profile.as_deref().unwrap_or("None");
         let state_str = format!("{:?}", state);
-        let status_color = if state_str == "PriorityMode" { Color::Red } else { Color::Green };
-        
+        let status_color = if state_str == "PriorityMode" {
+            Color::Red
+        } else {
+            Color::Green
+        };
+
         // Use single string for paragraph since Spans from text module has changed across ratatui versions
         // and using simple string is safer here without checking the exact ratatui version.
         let header_text = format!("Profil: {:<15} Durum: {}", prof_str, state_str);
-        
+
         let header = Paragraph::new(header_text)
             .style(Style::default().fg(status_color))
-            .block(Block::default().borders(Borders::ALL).title(" Bandwidth-Prioritizer "));
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(" Bandwidth-Prioritizer "),
+            );
         f.render_widget(header, chunks[0]);
     } else {
-        let header = Paragraph::new(" Loading... ")
-            .block(Block::default().borders(Borders::ALL).title(" Bandwidth-Prioritizer "));
+        let header = Paragraph::new(" Loading... ").block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(" Bandwidth-Prioritizer "),
+        );
         f.render_widget(header, chunks[0]);
     }
 
@@ -181,19 +198,24 @@ fn draw_ui(f: &mut ratatui::Frame, status: &Option<IpcResponse>, error: &Option<
         }
     }
 
-    let table = Table::new(table_rows, [
+    let table = Table::new(
+        table_rows,
+        [
             Constraint::Percentage(40),
             Constraint::Percentage(20),
             Constraint::Percentage(40),
-        ])
-        .header(Row::new(vec!["Kısıtlanan Uygulama", "PID", "Limit"]).style(Style::default().fg(Color::Yellow)))
-        .block(Block::default().borders(Borders::ALL));
-        
+        ],
+    )
+    .header(
+        Row::new(vec!["Kısıtlanan Uygulama", "PID", "Limit"])
+            .style(Style::default().fg(Color::Yellow)),
+    )
+    .block(Block::default().borders(Borders::ALL));
+
     f.render_widget(table, chunks[1]);
 
     // --- Footer ---
     let footer_text = format!("{}\n[q] Çık  [s] Stop", footer_stats);
-    let footer = Paragraph::new(footer_text)
-        .block(Block::default().borders(Borders::ALL));
+    let footer = Paragraph::new(footer_text).block(Block::default().borders(Borders::ALL));
     f.render_widget(footer, chunks[2]);
 }

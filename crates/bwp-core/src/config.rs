@@ -183,7 +183,13 @@ mod tests {
         let config = AppConfig::default();
         let toml_str = toml::to_string_pretty(&config).expect("serialize");
         let parsed: AppConfig = toml::from_str(&toml_str).expect("deserialize");
-        assert_eq!(parsed.general.poll_interval_ms, config.general.poll_interval_ms);
-        assert_eq!(parsed.default_throttle_limit_kbps, config.default_throttle_limit_kbps);
+        assert_eq!(
+            parsed.general.poll_interval_ms,
+            config.general.poll_interval_ms
+        );
+        assert_eq!(
+            parsed.default_throttle_limit_kbps,
+            config.default_throttle_limit_kbps
+        );
     }
 }

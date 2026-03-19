@@ -4,9 +4,9 @@
 //! to snapshot active networking states, computes diffs, and synthesizes `MonitorEvent`s.
 //! O(N) cost per poll interval.
 
-use bwp_core::{BwpError, MonitorEvent, BwpResult, ConnectionInfo, ProcessInfo};
+use bwp_core::{BwpError, BwpResult, ConnectionInfo, MonitorEvent, ProcessInfo};
 use tokio::sync::mpsc;
-use tokio::time::{sleep, Duration};
+use tokio::time::{Duration, sleep};
 use tracing::{debug, error, info};
 
 /// Spawns the asynchronous polling loop.
@@ -22,15 +22,21 @@ pub fn spawn_polling_loop(tx: mpsc::Sender<MonitorEvent>) {
                     // Compute Diffs: ConnectionOpened & ConnectionClosed
                     // (Simplified logic for demonstration: actual impl maintains a HashSet)
                     // Synthesize ETW-like MonitorEvents here.
-                    
+
                     for conn in &current_state {
-                        if !previous_state.iter().any(|p| p.pid == conn.pid && p.local_addr == conn.local_addr) {
+                        if !previous_state
+                            .iter()
+                            .any(|p| p.pid == conn.pid && p.local_addr == conn.local_addr)
+                        {
                             let _ = tx.send(MonitorEvent::ConnectionOpened(conn.clone())).await;
                         }
                     }
 
                     for prev in &previous_state {
-                        if !current_state.iter().any(|c| c.pid == prev.pid && c.local_addr == prev.local_addr) {
+                        if !current_state
+                            .iter()
+                            .any(|c| c.pid == prev.pid && c.local_addr == prev.local_addr)
+                        {
                             let _ = tx.send(MonitorEvent::ConnectionClosed(prev.clone())).await;
                         }
                     }

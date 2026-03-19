@@ -1,25 +1,28 @@
 use anyhow::Result;
-use bwp_core::pid::{write_pid, remove_pid};
-use bwp_core::manager::ConfigManager;
-use bwp_engine::{Engine, EngineEvent};
-use bwp_engine::ipc_server::start_ipc_server;
 use bwp_controller::windows::WindowsController;
-use bwp_monitor::WindowsMonitor as Monitor;
+use bwp_core::manager::ConfigManager;
+use bwp_core::pid::{remove_pid, write_pid};
+use bwp_engine::ipc_server::start_ipc_server;
+use bwp_engine::{Engine, EngineEvent};
 use bwp_monitor::ProcessMonitor; // Import trait to satisfy `run()` if needed
+use bwp_monitor::WindowsMonitor as Monitor;
 use std::sync::Arc;
 use tokio::sync::mpsc;
-use tracing::{info, error};
+use tracing::{error, info};
 
 mod service;
 
 fn main() -> Result<()> {
     tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")))
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+        )
         .init();
 
     let mut args = std::env::args();
     let _ = args.next(); // skip binary name
-    
+
     // Internal hack: when service gets `Stop`, it calls its own binary with `--internal-stop`
     // to trigger graceful IPC shutdown.
     if let Some(arg) = args.next() {
@@ -63,14 +66,18 @@ pub async fn run_engine_core() -> Result<()> {
     // 1. Initialize Monitor
     let monitor = Monitor::new();
     let mut monitor_rx = monitor.watch_connections().await?;
-    
+
     // Convert monitor events to engine events
     let (engine_tx, engine_rx) = mpsc::channel(1024);
     let engine_tx_for_monitor = engine_tx.clone();
 
     tokio::spawn(async move {
         while let Some(event) = monitor_rx.recv().await {
-            if engine_tx_for_monitor.send(EngineEvent::Monitor(event)).await.is_err() {
+            if engine_tx_for_monitor
+                .send(EngineEvent::Monitor(event))
+                .await
+                .is_err()
+            {
                 break;
             }
         }

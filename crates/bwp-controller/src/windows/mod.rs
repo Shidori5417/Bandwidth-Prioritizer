@@ -1,12 +1,12 @@
 use crate::traits::{ThrottleCommand, TrafficController};
-use bwp_core::{BandwidthLimit, BwpResult, BwpError};
+use bwp_core::{BandwidthLimit, BwpError, BwpResult};
 use std::sync::Arc;
-use tokio::sync::{mpsc, RwLock};
+use tokio::sync::{RwLock, mpsc};
 
 pub mod divert;
 
 /// Windows WinDivert implementation of the Traffic Controller.
-/// 
+///
 /// Intercepts traffic at the network layer strictly for PIDs requested via `ThrottleCommand`.
 /// Bypasses WinDivert overhead entirely for whitelisted applications.
 pub struct WindowsController {
@@ -40,7 +40,10 @@ impl WindowsController {
 impl TrafficController for WindowsController {
     async fn send_command(&self, command: ThrottleCommand) -> BwpResult<()> {
         self.command_tx.send(command).await.map_err(|e| {
-            BwpError::Controller(format!("Traffic engine is down, could not enqueue command: {}", e))
+            BwpError::Controller(format!(
+                "Traffic engine is down, could not enqueue command: {}",
+                e
+            ))
         })
     }
 
