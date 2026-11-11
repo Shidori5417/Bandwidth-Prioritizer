@@ -1,115 +1,94 @@
 # Bandwidth-Prioritizer (bwp)
 
-> 🚀 System-level network traffic shaper that **dynamically throttles non-critical applications** when priority apps are active.
-
 [![CI](https://github.com/Shidori5417/Bandwidth-Prioritizer/actions/workflows/ci.yml/badge.svg)](https://github.com/Shidori5417/Bandwidth-Prioritizer/actions/workflows/ci.yml)
-[![License: MIT/Apache-2.0](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](LICENSE-MIT)
+[![License: MIT/Apache-2.0](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](#license)
 
----
+Network traffic shaper that **throttles non-critical apps while priority apps (Discord, Zoom, ...) are running**, and restores full bandwidth when they close.
 
-## 🎯 Problem
+> **Platform status:** the Windows backend (WinDivert packet shaping + Windows Service) is the working one. The Linux controller (`tc htb`) is currently a placeholder and does not shape traffic yet; the workspace does not build on Linux at the moment.
 
-You're in a Discord call or Zoom meeting, and a background download tanks your connection. Existing solutions require manual intervention or expensive commercial software.
+## Features
 
-**bwp** solves this automatically:
-- Detects when critical apps (Discord, Zoom, VS Code Live Share, etc.) are active
-- Dynamically throttles all *other* processes' bandwidth
-- Restores full bandwidth gracefully when priority apps close
+- Detects running priority processes and throttles every other process with a token-bucket limiter
+- Background engine (`bwp-engine`) managed from a CLI, with an optional Windows Service install
+- Live `ratatui` dashboard (`bwp top`)
+- Named profiles (`gaming`, `meeting`, `download`) switchable at runtime
+- Add/remove priority apps on the fly, no restart
+- `config.toml` is watched and hot-reloaded
 
-## 🏗️ Architecture
+## Install / Build
 
-```
-┌─────────────────────────────────────────────────┐
-│                Bandwidth-Prioritizer            │
-│                                                 │
-│  ┌─────────────┐    ┌──────────────────────┐   │
-│  │ Process     │───▶│  Traffic Controller  │   │
-│  │ Monitor     │    │  (WFP / eBPF / tc)   │   │
-│  └─────────────┘    └──────────┬───────────┘   │
-│         │                      │               │
-│  ┌─────────────┐    ┌──────────▼───────────┐   │
-│  │  Config     │    │   Throttle Engine    │   │
-│  │  Manager    │    │   (Token Bucket)     │   │
-│  └─────────────┘    └──────────────────────┘   │
-│         │                                       │
-│  ┌─────────────┐                               │
-│  │  CLI / TUI  │                               │
-│  └─────────────┘                               │
-└─────────────────────────────────────────────────┘
-```
+Requirements: Rust >= 1.85 (edition 2024), Windows, an elevated (Administrator) shell for WinDivert and service management.
 
-## 📦 Crate Structure
-
-| Crate | Description |
-|---|---|
-| `bwp-core` | Shared types, error hierarchy, configuration models |
-| `bwp-monitor` | Process & network connection monitoring |
-| `bwp-controller` | Traffic shaping (WFP on Windows, tc/eBPF on Linux) |
-| `bwp-cli` | CLI (`clap`) and TUI (`ratatui`) interface |
-
-## 🚀 Quick Start (Windows)
-
-### Prerequisites
-
-- **Rust** ≥ 1.85 (2024 edition)
-- **Windows**: Administrator privileges (for WinDivert & Windows Service Management)
-
-### Building the Release
-
-```bash
+```powershell
 cargo build --release
 ```
-*(Note: `WinDivert.dll` is automatically copied to your output folder during the build process).*
 
-### 🛠️ OS-Level Service Management
+`WinDivert.dll` is copied next to the binaries by the build script. `build_release.ps1` packages `bwp.exe`, `bwp-engine.exe`, `WinDivert.dll` and the config into a zip.
 
-Bandwidth Prioritizer is designed to run silently as a background Windows Service. Run an **elevated PowerShell (Administrator)** window:
+## Usage
 
-```bash
-# 1. Install the engine as an Auto-Start Windows Service
+```powershell
+# Run the engine as an auto-start Windows Service (elevated)
 .\target\release\bwp.exe service install
-
-# 2. Start the background service
 .\target\release\bwp.exe service start
+.\target\release\bwp.exe service status     # also: stop, uninstall
 
-# Check the background daemon's status
-.\target\release\bwp.exe status
+# Or spawn the engine as a plain background process
+.\target\release\bwp.exe start
+.\target\release\bwp.exe stop
+
+# Talk to the running engine
+.\target\release\bwp.exe status             # state, active profile, throttled PIDs, enforced limit
+.\target\release\bwp.exe top                # live TUI (q / Esc: quit, s: stop engine)
+.\target\release\bwp.exe set gaming         # switch profile
+.\target\release\bwp.exe add "zoom.exe"     # add a priority app
+.\target\release\bwp.exe remove "zoom.exe"
 ```
 
-To stop or remove the service later, simply run `bwp service stop` and `bwp service uninstall`.
+## Configuration
 
-### 🖥️ Interacting via CLI / TUI
+The engine reads `config.toml` from its working directory (see the file in this repo):
 
-Once the Windows Service is running, any standard user can interact with the engine.
+```toml
+[general]
+poll_interval_ms = 500
+log_level = "info"                 # trace | debug | info | warn | error
+# log_file = "bwp.log"
 
-```bash
-# 📊 Open the Live Ratatui Dashboard (TUI)
-.\target\release\bwp.exe top
+critical_apps = ["discord", "zoom", "code", "teams", "slack"]
+default_throttle_limit_kbps = 1000 # cap for non-critical processes
 
-# 🎮 Switch dynamic profiles
-.\target\release\bwp.exe profile gaming
-.\target\release\bwp.exe profile streaming
-
-# ➕ Add a new critical application on-the-fly
-.\target\release\bwp.exe add "zoom.exe"
+[profiles.gaming]
+description = "Low-latency gaming"
+critical_apps = ["steam", "epicgameslauncher", "riotclientservices"]
+throttle_limit_kbps = 500
 ```
 
-### Configuration (`config.toml`)
+Edits are picked up automatically; no restart needed.
 
-Edit `config.toml` in the project root to define your limits and profiles. The daemon implements hot-reloading! You don't need to restart the service when you modify the `.toml` file; the engine detects changes seamlessly.
+## Architecture
 
----
+| Crate | Role |
+|---|---|
+| `bwp-core` | Config models and hot-reload, IPC protocol (named pipe on Windows, Unix socket on Linux), shared types and errors |
+| `bwp-monitor` | Process and network connection monitoring (ETW / polling on Windows) |
+| `bwp-controller` | Traffic shaping: token bucket + WinDivert (Windows), `tc htb` placeholder (Linux) |
+| `bwp-engine` | Daemon: state machine (Normal / PriorityMode), IPC server, service entry |
+| `bwp-cli` | `bwp` binary: `clap` CLI and `ratatui` TUI |
 
-## 🧪 Testing & Development
+```
+monitor --> engine state machine --> controller (token bucket / WinDivert)
+config.toml (hot-reload) --^              ^-- IPC <-- bwp CLI / TUI
+```
+
+## Development
 
 ```bash
-# Run all asynchronous and integration tests
 cargo test --workspace
-
-# Linting
 cargo clippy --workspace --all-targets -- -D warnings
 ```
 
-## 📄 License
+## License
 
 Dual licensed under [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE), at your option.
