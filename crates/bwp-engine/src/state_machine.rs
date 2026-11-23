@@ -267,7 +267,7 @@ impl<C: TrafficController + 'static> Engine<C> {
         }
     }
 
-    /// Forgets the cached executable name of a PID (to be wired to process-exit events).
+    /// Forgets the cached executable name of a PID (called when its last connection closes).
     pub fn drop_process_from_cache(&self, pid: u32) {
         let _ = self.pid_cache.remove(&pid);
     }
@@ -314,6 +314,9 @@ impl<C: TrafficController + 'static> Engine<C> {
             }
             let _ = self.connection_counts.remove(&pid);
         }
+        // The process no longer has any tracked connection: forget its name so that a
+        // later process reusing this PID is classified by its own executable.
+        self.drop_process_from_cache(pid);
 
         if self.normal_pids.remove(&pid) && self.state == ThrottleState::PriorityMode {
             let _ = self
@@ -578,6 +581,23 @@ mod tests {
                 .unwrap()
                 .contains(&ThrottleCommand::RemoveLimit { pid: 20 })
         );
+    }
+
+    #[tokio::test]
+    async fn last_close_forgets_the_cached_name_so_reused_pids_are_reclassified() {
+        let (mut engine, _) = default_engine();
+        seed_name(&engine, 10, "discord.exe");
+        engine.handle_connection_opened(10).await;
+        assert_eq!(engine.state, ThrottleState::PriorityMode);
+        engine.handle_connection_closed(10).await;
+        assert!(!engine.pid_cache.contains_key(&10));
+        assert_eq!(engine.state, ThrottleState::Normal);
+
+        // The PID is reused by an unrelated process.
+        seed_name(&engine, 10, "chrome.exe");
+        engine.handle_connection_opened(10).await;
+        assert!(engine.normal_pids.contains(&10));
+        assert!(engine.priority_pids.is_empty());
     }
 
     #[tokio::test]
