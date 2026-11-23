@@ -683,11 +683,12 @@ mod tests {
     #[tokio::test]
     async fn unverifiable_cache_entries_are_kept() {
         let (mut engine, _) = default_engine();
-        seed_name(&engine, 10, "discord.exe");
-        let _ = engine.pid_start.insert(10, 5);
-        // PID 10 is not a running process here: nothing can disprove the cached name.
-        engine.handle_connection_opened(10).await;
-        assert!(engine.priority_pids.contains(&10));
+        let pid = u32::MAX - 1;
+        seed_name(&engine, pid, "discord.exe");
+        let _ = engine.pid_start.insert(pid, 5);
+        // This PID is not a running process: nothing can disprove the cached name.
+        engine.handle_connection_opened(pid).await;
+        assert!(engine.priority_pids.contains(&pid));
     }
 
     #[tokio::test]
