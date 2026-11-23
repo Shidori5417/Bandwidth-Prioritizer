@@ -11,7 +11,12 @@ $ErrorActionPreference = "Stop"
 
 $ProjectRoot = $PSScriptRoot
 $ReleaseDir = Join-Path $ProjectRoot "target\bwp-release"
-$ZipFile = Join-Path $ProjectRoot "target\bwp-windows-v1.0.0.zip"
+
+# Derive the version from the workspace Cargo.toml so the archive name never goes stale.
+$VersionMatch = Select-String -Path (Join-Path $ProjectRoot "Cargo.toml") -Pattern '^\s*version\s*=\s*"([^"]+)"' | Select-Object -First 1
+if (-not $VersionMatch) { throw "Could not read the version from Cargo.toml" }
+$Version = $VersionMatch.Matches[0].Groups[1].Value
+$ZipFile = Join-Path $ProjectRoot "target\bwp-windows-v$Version.zip"
 
 Write-Host "[*] Building Bandwidth-Prioritizer in release mode..." -ForegroundColor Cyan
 Set-Location $ProjectRoot
@@ -27,7 +32,6 @@ New-Item -ItemType Directory -Force -Path $ReleaseDir | Out-Null
 $FilesToPackage = @(
     "target\release\bwp.exe",
     "target\release\bwp-engine.exe",
-    "target\release\WinDivert.dll",
     "config.toml",
     "README.md",
     "LICENSE-MIT"
@@ -50,3 +54,9 @@ if (Test-Path $ZipFile) {
 Compress-Archive -Path "$ReleaseDir\*" -DestinationPath $ZipFile -Force
 
 Write-Host "[*] Release packaged successfully: $ZipFile" -ForegroundColor Green
+
+# Expose the archive path to GitHub Actions, if running there.
+if ($env:GITHUB_OUTPUT) {
+    "zip_path=$ZipFile" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+    "version=$Version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+}

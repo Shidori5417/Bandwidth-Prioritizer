@@ -59,6 +59,7 @@ pub struct IpcConnection<S> {
 }
 
 impl<S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin> IpcConnection<S> {
+    /// Wraps a connected stream (named pipe or Unix socket) in a framed IPC connection.
     pub fn new(stream: S) -> Self {
         Self { stream }
     }
@@ -79,7 +80,8 @@ impl<S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin> IpcConnection<S> {
         let mut buf = vec![0u8; len as usize];
         let _ = self.stream.read_exact(&mut buf).await?;
 
-        let msg = serde_json::from_slice(&buf).map_err(|e| Error::new(ErrorKind::InvalidData, e))?;
+        let msg =
+            serde_json::from_slice(&buf).map_err(|e| Error::new(ErrorKind::InvalidData, e))?;
         Ok(Some(msg))
     }
 
@@ -116,11 +118,15 @@ impl<S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin> IpcConnection<S> {
 // ─── Platform-Specific Transport Interfaces ─────────────────────────
 
 #[cfg(target_os = "windows")]
+/// Named pipe transport (Windows).
 pub mod windows {
     use super::*;
-    use tokio::net::windows::named_pipe::{ClientOptions, NamedPipeClient, NamedPipeServer, ServerOptions};
-    
+    use tokio::net::windows::named_pipe::{
+        ClientOptions, NamedPipeClient, NamedPipeServer, ServerOptions,
+    };
+
     // Windows constants for named pipe
+    /// Name of the engine named pipe.
     pub const PIPE_NAME: &str = r"\\.\pipe\BandwidthPrioritizerIpc";
 
     /// CLI connects to the running engine using Named Pipes.
@@ -145,21 +151,25 @@ pub mod windows {
 }
 
 #[cfg(target_os = "linux")]
+/// Unix domain socket transport (Linux).
 pub mod linux {
     use super::*;
     use tokio::net::{UnixListener, UnixStream};
-    
+
     // Unix Socket path
+    /// Path of the engine socket.
     pub const SOCKET_PATH: &str = "/var/run/bwp.sock";
 
+    /// CLI connects to the running engine through the Unix socket.
     pub async fn connect_client() -> Result<IpcConnection<UnixStream>> {
         let stream = UnixStream::connect(SOCKET_PATH).await?;
         Ok(IpcConnection::new(stream))
     }
 
+    /// Engine binds the Unix socket for incoming IPC connections.
     pub fn bind_server() -> Result<UnixListener> {
         let _ = std::fs::remove_file(SOCKET_PATH);
-        
+
         // Create a secure temporary directory to bind the socket in, mitigating TOCTOU vulnerabilities.
         // `umask` affects the whole process (thread-unsafe), so creating a private directory is preferred.
         let temp_dir_path = "/var/run/bwp_tmp_sock_dir";
@@ -187,7 +197,7 @@ pub mod linux {
 
         // Cleanup the temporary directory
         let _ = std::fs::remove_dir(temp_dir_path);
-        
+
         Ok(listener)
     }
 }

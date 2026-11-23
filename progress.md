@@ -47,8 +47,8 @@ Kritik uygulamalar (Discord, Zoom, VS Code Live Share vb.) aktifken diğer tüm 
 **Hedef:** Sistemde çalışan süreçleri ve ağ bağlantılarını tespit et.
 
 - [ ] `/proc/net/tcp` & `/proc/net/udp` okuma (Linux)
-- [x] Windows: ETW (Event Tracing for Windows) `Microsoft-Windows-TCPIP` entegrasyonu (ferrisetw)
-- [x] Windows: `GetExtendedTcpTable` polling fallback mekanizması
+- [ ] Windows: ETW (Event Tracing for Windows) `Microsoft-Windows-TCPIP` entegrasyonu (ferrisetw) — henüz uygulanmadı; iskelet kaldırıldı, `spawn_etw_listener` hata döner
+- [ ] Windows: `GetExtendedTcpTable` polling fallback mekanizması — döngü var, ancak snapshot fonksiyonları boş liste döner
 - [x] PID → Process Name eşleştirme (DashMap tabanlı cache)
 - [x] Aktif ağ bağlantılarını MonitorEvent akışıyla (stream) bildirme
 - [x] Polling döngüsü (graceful fallback)
@@ -84,14 +84,14 @@ Kritik uygulamalar (Discord, Zoom, VS Code Live Share vb.) aktifken diğer tüm 
 #### Windows
 
 - [ ] Windows Filtering Platform (WFP) API entegrasyonu
-- [x] Windows: `windivert` ile paket arayüzüne (flow-level filter ile) entegrasyon
+- [ ] Windows: `windivert` ile paket arayüzüne (flow-level filter ile) entegrasyon — henüz uygulanmadı; controller komutları kabul eder ama trafik şekillendirmez
 - [x] Alternatif: `NetLimiter` benzeri yaklaşım (socket-level)
 
 #### Ortak
 
 - [x] Token Bucket algoritması implementasyonu (hız sınırlayıcı çekirdeği)
 - [x] Per-PID kural ekleme/kaldırma API'si
-- [x] **Test:** Sanal ağ arayüzü ve WinDivert ile entegrasyon testleri (bwp-controller)
+- [ ] **Test:** Sanal ağ arayüzü ve WinDivert ile entegrasyon testleri (bwp-controller)
 
 ---
 

@@ -1,28 +1,26 @@
 //! Windows-specific process and network monitoring implementation.
 //!
-//! This module uses a hybrid approach:
-//! 1. **ETW (Event Tracing for Windows)**: Primary fast-path providing real-time
-//!    connection events via `ferrisetw` and the `Microsoft-Windows-TCPIP` provider.
-//! 2. **Polling (GetExtendedTcpTable)**: Graceful fallback if the ETW session
-//!    fails to start (e.g. lack of admin privileges or Group policies).
+//! **Status: not implemented.** The design is hybrid (ETW real-time events with a
+//! `GetExtendedTcpTable` polling fallback), but the ETW listener always reports an
+//! error and the polling fallback returns empty snapshots, so no connection events
+//! are produced yet.
 
 mod etw;
 mod poll;
 
 use crate::traits::ProcessMonitor;
-use bwp_core::{BwpError, BwpResult, ConnectionInfo, MonitorEvent, ProcessInfo};
+use bwp_core::{BwpResult, ConnectionInfo, MonitorEvent, ProcessInfo};
 use tokio::sync::mpsc;
 use tracing::{info, warn};
 
 /// Windows process monitor, implementing the hybrid ETW/Polling strategy.
-pub struct WindowsMonitor {
-    // We could store configuration here, like poll_interval overrides,
-    // ETW session names, etc.
-}
+#[derive(Debug, Default)]
+pub struct WindowsMonitor {}
 
 impl WindowsMonitor {
     /// Creates a new Windows monitor.
-    pub fn new() -> Self {
+    #[must_use]
+    pub const fn new() -> Self {
         Self {}
     }
 }

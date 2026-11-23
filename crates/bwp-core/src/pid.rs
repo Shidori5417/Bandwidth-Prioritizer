@@ -1,6 +1,6 @@
 //! PID File Management Utility
 //!
-//! Provides functions to create, check, and remove PID files, 
+//! Provides functions to create, check, and remove PID files,
 //! ensuring only one instance of the engine runs at a time.
 
 use std::fs;
@@ -12,6 +12,7 @@ thread_local! {
     static MOCK_PID_DIR: std::cell::RefCell<Option<PathBuf>> = const { std::cell::RefCell::new(None) };
 }
 
+/// Returns the location of the PID file.
 #[cfg(target_os = "windows")]
 pub fn get_pid_file_path() -> PathBuf {
     #[cfg(test)]
@@ -30,6 +31,7 @@ pub fn get_pid_file_path() -> PathBuf {
     path
 }
 
+/// Returns the location of the PID file.
 #[cfg(target_os = "linux")]
 pub fn get_pid_file_path() -> PathBuf {
     #[cfg(test)]
@@ -48,7 +50,7 @@ pub fn read_pid() -> Result<Option<u32>> {
     if !path.exists() {
         return Ok(None);
     }
-    
+
     let content = fs::read_to_string(&path)?;
     match content.trim().parse::<u32>() {
         Ok(pid) => Ok(Some(pid)),
@@ -75,11 +77,11 @@ pub fn remove_pid() -> Result<()> {
 /// Checks if a process with the given PID is currently running.
 #[cfg(target_os = "windows")]
 pub fn is_process_running(pid: u32) -> bool {
-    use windows::core::HRESULT;
     use windows::Win32::Foundation::{CloseHandle, ERROR_ACCESS_DENIED, STILL_ACTIVE};
     use windows::Win32::System::Threading::{
         GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
     };
+    use windows::core::HRESULT;
 
     // SAFETY: We are calling Windows API functions to query process information.
     // The handle is properly closed if it's successfully opened.
@@ -111,6 +113,7 @@ pub fn is_process_running(pid: u32) -> bool {
     }
 }
 
+/// Checks if a process with the given PID is currently running.
 #[cfg(target_os = "linux")]
 pub fn is_process_running(pid: u32) -> bool {
     // Check if the process directory exists in procfs
@@ -120,10 +123,9 @@ pub fn is_process_running(pid: u32) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::env;
+    use once_cell::sync::Lazy;
     use std::fs;
     use std::sync::Mutex;
-    use once_cell::sync::Lazy;
 
     static ENV_MUTEX: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 

@@ -27,7 +27,8 @@ pub fn install() -> Result<()> {
         return Err(anyhow::anyhow!("bwp-engine.exe not found next to CLI"));
     }
 
-    let manager = ServiceManager::local_computer(None::<&str>, ServiceManagerAccess::CREATE_SERVICE)?;
+    let manager =
+        ServiceManager::local_computer(None::<&str>, ServiceManagerAccess::CREATE_SERVICE)?;
 
     // We pass the `--service` argument to tell the engine to run the service dispatcher
     let service_info = windows_service::service::ServiceInfo {
@@ -44,11 +45,14 @@ pub fn install() -> Result<()> {
     };
 
     let _ = manager.create_service(&service_info, ServiceAccess::CHANGE_CONFIG);
-    
+
     // Also tell it to restart on failure (basic recovery)
     let _service = manager.open_service(SERVICE_NAME, ServiceAccess::CHANGE_CONFIG)?;
-    
-    println!("✅ Windows Service '{}' installed successfully.", SERVICE_DISPLAY_NAME);
+
+    println!(
+        "✅ Windows Service '{}' installed successfully.",
+        SERVICE_DISPLAY_NAME
+    );
     Ok(())
 }
 
@@ -75,7 +79,10 @@ pub fn stop() -> Result<()> {
     let manager = ServiceManager::local_computer(None::<&str>, ServiceManagerAccess::CONNECT)?;
     let service = manager.open_service(SERVICE_NAME, ServiceAccess::STOP)?;
     let status = service.stop()?;
-    println!("🛑 Windows Service stopped (state: {:?}).", status.current_state);
+    println!(
+        "🛑 Windows Service stopped (state: {:?}).",
+        status.current_state
+    );
     Ok(())
 }
 
@@ -84,17 +91,40 @@ pub fn status() -> Result<()> {
     let manager = ServiceManager::local_computer(None::<&str>, ServiceManagerAccess::CONNECT)?;
     let service = manager.open_service(SERVICE_NAME, ServiceAccess::QUERY_STATUS)?;
     let status = service.query_status()?;
-    println!("🔍 Windows Service '{}' Status: {:?}", SERVICE_DISPLAY_NAME, status.current_state);
+    println!(
+        "🔍 Windows Service '{}' Status: {:?}",
+        SERVICE_DISPLAY_NAME, status.current_state
+    );
     Ok(())
 }
 
 #[cfg(not(target_os = "windows"))]
-pub fn install() -> anyhow::Result<()> { Err(anyhow::anyhow!("Service commands only supported on Windows")) }
+pub fn install() -> anyhow::Result<()> {
+    Err(anyhow::anyhow!(
+        "Service commands only supported on Windows"
+    ))
+}
 #[cfg(not(target_os = "windows"))]
-pub fn uninstall() -> anyhow::Result<()> { Err(anyhow::anyhow!("Service commands only supported on Windows")) }
+pub fn uninstall() -> anyhow::Result<()> {
+    Err(anyhow::anyhow!(
+        "Service commands only supported on Windows"
+    ))
+}
 #[cfg(not(target_os = "windows"))]
-pub fn start() -> anyhow::Result<()> { Err(anyhow::anyhow!("Service commands only supported on Windows")) }
+pub fn start() -> anyhow::Result<()> {
+    Err(anyhow::anyhow!(
+        "Service commands only supported on Windows"
+    ))
+}
 #[cfg(not(target_os = "windows"))]
-pub fn stop() -> anyhow::Result<()> { Err(anyhow::anyhow!("Service commands only supported on Windows")) }
+pub fn stop() -> anyhow::Result<()> {
+    Err(anyhow::anyhow!(
+        "Service commands only supported on Windows"
+    ))
+}
 #[cfg(not(target_os = "windows"))]
-pub fn status() -> anyhow::Result<()> { Err(anyhow::anyhow!("Service commands only supported on Windows")) }
+pub fn status() -> anyhow::Result<()> {
+    Err(anyhow::anyhow!(
+        "Service commands only supported on Windows"
+    ))
+}

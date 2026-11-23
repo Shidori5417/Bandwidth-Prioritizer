@@ -5,20 +5,22 @@ version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
+repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
 bwp-core = { workspace = true }
-bwp-monitor = { workspace = true }
 bwp-controller = { workspace = true }
 thiserror = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
 tokio = { workspace = true }
 dashmap = "5"
+sysinfo = { version = "0.33", default-features = false, features = ["system"] }
 
 [target.'cfg(windows)'.dependencies]
+bwp-monitor = { workspace = true }
+tracing-subscriber = { workspace = true }
 windows-service = { workspace = true }
 
 [lints]

@@ -5,6 +5,7 @@ version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
+repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
@@ -13,11 +14,6 @@ serde = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 tokio = { workspace = true }
-futures = "0.3"
-
-[target.'cfg(windows)'.dependencies]
-windows = { workspace = true }
-windivert = { version = "0.6", features = ["vendored"] } # Stable WinDivert wrapper with vendored driver
 
 [lints]
 workspace = true

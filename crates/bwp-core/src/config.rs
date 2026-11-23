@@ -7,6 +7,30 @@ use crate::types::BandwidthLimit;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+/// File name of the configuration file looked up next to the executable.
+pub const CONFIG_FILE_NAME: &str = "config.toml";
+
+/// Environment variable that overrides the configuration file location.
+pub const CONFIG_ENV_VAR: &str = "BWP_CONFIG";
+
+/// Resolves which `config.toml` to use.
+///
+/// Order: the `BWP_CONFIG` environment variable, then `config.toml` next to the
+/// running executable (a Windows service starts with `System32` as its working
+/// directory, so the current directory is not reliable), then `config.toml` in the
+/// current directory as a last resort.
+#[must_use]
+pub fn resolve_config_path() -> std::path::PathBuf {
+    if let Some(p) = std::env::var_os(CONFIG_ENV_VAR).filter(|p| !p.is_empty()) {
+        return p.into();
+    }
+    std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(|dir| dir.join(CONFIG_FILE_NAME)))
+        .filter(|p| p.exists())
+        .unwrap_or_else(|| CONFIG_FILE_NAME.into())
+}
+
 /// Root configuration structure, mirrors `config.toml`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
@@ -101,6 +125,22 @@ impl AppConfig {
     }
 }
 
+/// Returns whether a process executable name matches a configured app name.
+///
+/// The comparison is case-insensitive and ignores a trailing `.exe` on either side,
+/// so `Discord.exe` matches `discord` and `discord.exe`.
+#[must_use]
+pub fn app_name_matches(exe_name: &str, configured: &str) -> bool {
+    fn strip(name: &str) -> &str {
+        let name = name.trim();
+        name.len()
+            .checked_sub(4)
+            .filter(|&at| name.is_char_boundary(at) && name[at..].eq_ignore_ascii_case(".exe"))
+            .map_or(name, |at| &name[..at])
+    }
+    strip(exe_name).eq_ignore_ascii_case(strip(configured))
+}
+
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
@@ -135,6 +175,24 @@ fn default_log_level() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn shipped_config_toml_is_parsed_fully() {
+        let config: AppConfig = toml::from_str(include_str!("../../../config.toml")).unwrap();
+        assert!(config.critical_apps.iter().any(|a| a == "discord"));
+        assert_eq!(config.default_throttle_limit_kbps, 1000);
+        assert_eq!(config.general.poll_interval_ms, 500);
+        assert_eq!(config.throttle_limit_for_profile("gaming").as_kbps(), 500);
+    }
+
+    #[test]
+    fn app_name_matching_ignores_case_and_exe_suffix() {
+        assert!(app_name_matches("Discord.exe", "discord"));
+        assert!(app_name_matches("discord", "DISCORD.EXE"));
+        assert!(app_name_matches("zoom.exe", "zoom.exe"));
+        assert!(!app_name_matches("discord.exe", "zoom"));
+        assert!(!app_name_matches("exe", "e"));
+    }
 
     #[test]
     fn default_config_has_sane_values() {
@@ -183,7 +241,13 @@ mod tests {
         let config = AppConfig::default();
         let toml_str = toml::to_string_pretty(&config).expect("serialize");
         let parsed: AppConfig = toml::from_str(&toml_str).expect("deserialize");
-        assert_eq!(parsed.general.poll_interval_ms, config.general.poll_interval_ms);
-        assert_eq!(parsed.default_throttle_limit_kbps, config.default_throttle_limit_kbps);
+        assert_eq!(
+            parsed.general.poll_interval_ms,
+            config.general.poll_interval_ms
+        );
+        assert_eq!(
+            parsed.default_throttle_limit_kbps,
+            config.default_throttle_limit_kbps
+        );
     }
 }

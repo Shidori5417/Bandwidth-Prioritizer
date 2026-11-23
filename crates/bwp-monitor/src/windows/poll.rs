@@ -4,15 +4,18 @@
 //! to snapshot active networking states, computes diffs, and synthesizes `MonitorEvent`s.
 //! O(N) cost per poll interval.
 
-use bwp_core::{BwpError, MonitorEvent, BwpResult, ConnectionInfo, ProcessInfo};
+use bwp_core::{BwpResult, ConnectionInfo, MonitorEvent, ProcessInfo};
 use tokio::sync::mpsc;
-use tokio::time::{sleep, Duration};
-use tracing::{debug, error, info};
+use tokio::time::{Duration, sleep};
+use tracing::{error, info, warn};
 
 /// Spawns the asynchronous polling loop.
 pub fn spawn_polling_loop(tx: mpsc::Sender<MonitorEvent>) {
     tokio::spawn(async move {
         info!("Graceful fallback to GetExtendedTcpTable polling loop started.");
+        warn!(
+            "Connection snapshots are not implemented yet: no connection events will be reported."
+        );
 
         let mut previous_state: Vec<ConnectionInfo> = vec![];
 
@@ -22,15 +25,21 @@ pub fn spawn_polling_loop(tx: mpsc::Sender<MonitorEvent>) {
                     // Compute Diffs: ConnectionOpened & ConnectionClosed
                     // (Simplified logic for demonstration: actual impl maintains a HashSet)
                     // Synthesize ETW-like MonitorEvents here.
-                    
+
                     for conn in &current_state {
-                        if !previous_state.iter().any(|p| p.pid == conn.pid && p.local_addr == conn.local_addr) {
+                        if !previous_state
+                            .iter()
+                            .any(|p| p.pid == conn.pid && p.local_addr == conn.local_addr)
+                        {
                             let _ = tx.send(MonitorEvent::ConnectionOpened(conn.clone())).await;
                         }
                     }
 
                     for prev in &previous_state {
-                        if !current_state.iter().any(|c| c.pid == prev.pid && c.local_addr == prev.local_addr) {
+                        if !current_state
+                            .iter()
+                            .any(|c| c.pid == prev.pid && c.local_addr == prev.local_addr)
+                        {
                             let _ = tx.send(MonitorEvent::ConnectionClosed(prev.clone())).await;
                         }
                     }

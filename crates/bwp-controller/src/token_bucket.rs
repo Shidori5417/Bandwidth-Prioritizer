@@ -1,5 +1,5 @@
-use std::time::Instant;
 use bwp_core::BandwidthLimit;
+use std::time::Instant;
 
 /// A high-performance, lock-free Token Bucket algorithm meant to run
 /// synchronously inside the packet interception loop.
@@ -20,9 +20,9 @@ impl TokenBucket {
         let bytes_per_sec = limit.as_bytes_per_sec() as f64;
         Self {
             limit,
-            // A common strategy is parsing MTU burst size 
+            // A common strategy is parsing MTU burst size
             // but setting capacity identical to per-sec limit accommodates most cases safely.
-            capacity: bytes_per_sec, 
+            capacity: bytes_per_sec,
             tokens: bytes_per_sec,
             last_refill: Instant::now(),
         }
@@ -59,10 +59,10 @@ impl TokenBucket {
     fn refill(&mut self) {
         let now = Instant::now();
         let elapsed = now.duration_since(self.last_refill).as_secs_f64();
-        
+
         let rate = self.limit.as_bytes_per_sec() as f64;
         let generated = elapsed * rate;
-        
+
         if generated > 0.0 {
             self.tokens = (self.tokens + generated).min(self.capacity);
             self.last_refill = now;

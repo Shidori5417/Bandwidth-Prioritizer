@@ -1,6 +1,25 @@
 # Bandwidth-Prioritizer default configuration
 # ─────────────────────────────────────────────
 
+# NOTE: top-level keys must come before the first [table] header.
+# ─── Critical Applications ──────────────────
+# Processes listed here are considered "priority".
+# When any of them are active, all OTHER processes
+# get their bandwidth throttled.
+# Matching is case-insensitive and ignores a trailing ".exe".
+critical_apps = [
+    "discord",
+    "zoom",
+    "code",           # VS Code
+    "teams",          # Microsoft Teams
+    "slack",
+]
+
+# ─── Default Throttle Limit ─────────────────
+# Bandwidth cap applied to non-critical processes (in Kbps).
+# 1000 Kbps = 1 Mbps
+default_throttle_limit_kbps = 1000
+
 [general]
 # Process monitor polling interval (milliseconds)
 poll_interval_ms = 500
@@ -10,28 +29,6 @@ log_level = "info"
 
 # Optional: log file path (omit for stdout only)
 # log_file = "bwp.log"
-
-# ─── Critical Applications ──────────────────
-# Processes listed here are considered "priority".
-# When any of them are active, all OTHER processes
-# get their bandwidth throttled.
-critical_apps = [
-    "discord",
-    "Discord",
-    "zoom",
-    "Zoom",
-    "code",           # VS Code
-    "Code",
-    "teams",          # Microsoft Teams
-    "Teams",
-    "slack",
-    "Slack",
-]
-
-# ─── Default Throttle Limit ─────────────────
-# Bandwidth cap applied to non-critical processes (in Kbps).
-# 1000 Kbps = 1 Mbps
-default_throttle_limit_kbps = 1000
 
 # ─── Profiles ───────────────────────────────
 # Named presets for quick switching via `bwp profile <name>`.

@@ -11,13 +11,16 @@
 //! - **Configuration models**: Strongly-typed config structures
 
 pub mod config;
-pub mod manager;
 pub mod error;
-pub mod types;
 pub mod ipc;
+pub mod manager;
 pub mod pid;
+pub mod types;
 
 pub use config::AppConfig;
-pub use manager::ConfigManager;
 pub use error::{BwpError, BwpResult};
-pub use types::{BandwidthLimit, ConnectionInfo, ProcessInfo, ThrottleState, MonitorEvent, Protocol, ConnectionState};
+pub use manager::ConfigManager;
+pub use types::{
+    BandwidthLimit, ConnectionInfo, ConnectionState, MonitorEvent, ProcessInfo, Protocol,
+    ThrottleState,
+};

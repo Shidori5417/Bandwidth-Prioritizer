@@ -1,14 +1,15 @@
 use crate::traits::{ThrottleCommand, TrafficController};
-use bwp_core::{BandwidthLimit, BwpResult, BwpError};
+use bwp_core::{BandwidthLimit, BwpError, BwpResult};
 use std::sync::Arc;
-use tokio::sync::{mpsc, RwLock};
+use tokio::sync::{RwLock, mpsc};
 
+/// Placeholder packet-shaping engine.
 pub mod divert;
 
-/// Windows WinDivert implementation of the Traffic Controller.
-/// 
-/// Intercepts traffic at the network layer strictly for PIDs requested via `ThrottleCommand`.
-/// Bypasses WinDivert overhead entirely for whitelisted applications.
+/// Windows implementation of the Traffic Controller.
+///
+/// **Placeholder:** commands are accepted and queued, but the WinDivert packet
+/// shaping behind them is not implemented yet, so no traffic is limited.
 pub struct WindowsController {
     command_tx: mpsc::Sender<ThrottleCommand>,
     active_rules: Arc<RwLock<Vec<(u32, BandwidthLimit)>>>,
@@ -16,6 +17,9 @@ pub struct WindowsController {
 
 impl WindowsController {
     /// Instantiate a new traffic controller and launch the background processing thread.
+    ///
+    /// # Errors
+    /// Currently never fails.
     pub fn new() -> BwpResult<Self> {
         let (command_tx, command_rx) = mpsc::channel(256);
         let active_rules = Arc::new(RwLock::new(Vec::new()));
@@ -25,8 +29,8 @@ impl WindowsController {
         // Launch the specialized engine thread.
         // It's vital that Network intercepts don't run on the Tokio async loop pool.
         std::thread::spawn(move || {
-            if let Err(e) = divert::run_windivert_engine(command_rx, active_rules_clone) {
-                tracing::error!("WinDivert Engine Terminated: {e}");
+            if let Err(e) = divert::run_placeholder_engine(command_rx, &active_rules_clone) {
+                tracing::error!("Shaping engine terminated: {e}");
             }
         });
 
@@ -40,7 +44,10 @@ impl WindowsController {
 impl TrafficController for WindowsController {
     async fn send_command(&self, command: ThrottleCommand) -> BwpResult<()> {
         self.command_tx.send(command).await.map_err(|e| {
-            BwpError::Controller(format!("Traffic engine is down, could not enqueue command: {}", e))
+            BwpError::Controller(format!(
+                "Traffic engine is down, could not enqueue command: {}",
+                e
+            ))
         })
     }
 

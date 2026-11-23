@@ -77,7 +77,7 @@ fn run_service() -> windows_service::Result<()> {
 
     // Launch the main engine in a new thread
     let engine_thread = std::thread::spawn(|| {
-        if let Err(e) = crate::run_engine_core() {
+        if let Err(e) = crate::windows_main::run_engine_core() {
             tracing::error!("Service engine core terminated with error: {}", e);
         }
     });
@@ -90,10 +90,12 @@ fn run_service() -> windows_service::Result<()> {
     // But since the engine runs in a tokio runtime, we can trigger shutdown via IPC client,
     // or just let the thread drop (which kills the WinDivert handle) and exit.
     // Cleanest way is to connect via IPC to itself and send Stop.
-    let _ = std::process::Command::new(std::env::current_exe().unwrap_or_else(|_| "bwp-engine.exe".into()))
-        .arg("--internal-stop")
-        .output(); // Send the stop command (Wait for thread to finish)
-    
+    let _ = std::process::Command::new(
+        std::env::current_exe().unwrap_or_else(|_| "bwp-engine.exe".into()),
+    )
+    .arg("--internal-stop")
+    .output(); // Send the stop command (Wait for thread to finish)
+
     let _ = engine_thread.join();
 
     // Tell SCM that we stopped

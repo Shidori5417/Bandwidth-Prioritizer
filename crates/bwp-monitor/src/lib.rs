@@ -7,10 +7,11 @@
 
 pub mod traits;
 
-#[cfg(target_os = "windows")]
+/// Windows monitor implementation (currently a placeholder).
+#[cfg(windows)]
 pub mod windows;
 
-#[cfg(target_os = "windows")]
+#[cfg(windows)]
 pub use windows::WindowsMonitor;
 
 pub use traits::ProcessMonitor;

@@ -1,43 +1,37 @@
-//! Linux Traffic Control Support (TC HTB API generation placeholder).
+//! Linux traffic control placeholder.
 //!
-//! Exposes identical trait interface to Windows implementation but delegates
-//! traffic shaping to IP Route2 `tc htb` constructs wrapped around standard PID assignments.
-//! Assumes CAP_NET_ADMIN privileges.
+//! **Not implemented.** Exposes the same trait interface as the Windows controller so
+//! the workspace builds and the engine logic can be exercised on Linux, but no traffic
+//! is shaped (the planned `tc htb` / cgroup backend does not exist yet).
 
 use crate::traits::{ThrottleCommand, TrafficController};
-use bwp_core::{BandwidthLimit, BwpResult, BwpError};
-use std::sync::Arc;
-use tokio::sync::{mpsc, RwLock};
+use bwp_core::{BandwidthLimit, BwpResult};
+use tracing::debug;
 
-pub struct LinuxController {
-    command_tx: mpsc::Sender<ThrottleCommand>,
-    active_rules: Arc<RwLock<Vec<(u32, BandwidthLimit)>>>,
-}
+/// Placeholder Linux controller: accepts commands and ignores them.
+#[derive(Debug, Default)]
+pub struct LinuxController;
 
 impl LinuxController {
+    /// Creates the placeholder controller.
+    ///
+    /// # Errors
+    /// Currently never fails.
     pub fn new() -> BwpResult<Self> {
-        let (command_tx, _command_rx) = mpsc::channel(256);
-        let active_rules = Arc::new(RwLock::new(Vec::new()));
-
-        // In Linux, we'd spawn a loop to process commands identically to WinDivert
-        // and push netlink `tc` operations per PID dynamically using eBPF maps or cgroups.
-
-        Ok(Self {
-            command_tx,
-            active_rules,
-        })
+        Ok(Self)
     }
 }
 
 impl TrafficController for LinuxController {
     async fn send_command(&self, command: ThrottleCommand) -> BwpResult<()> {
-        self.command_tx.send(command).await.map_err(|e| {
-            BwpError::Controller(format!("Linux Controller Queue closed: {}", e))
-        })
+        debug!(
+            ?command,
+            "Linux traffic shaping not implemented; command ignored"
+        );
+        Ok(())
     }
 
     async fn active_rules(&self) -> BwpResult<Vec<(u32, BandwidthLimit)>> {
-        let lock = self.active_rules.read().await;
-        Ok(lock.clone())
+        Ok(Vec::new())
     }
 }
