@@ -74,7 +74,7 @@ critical_apps = ["discord", "zoom", "code", "teams", "slack"]  # case-insensitiv
 default_throttle_limit_kbps = 1000                              # cap for non-critical processes
 
 [general]
-poll_interval_ms = 500
+poll_interval_ms = 500            # read at startup only; restart the engine to change it
 log_level = "info"                 # trace | debug | info | warn | error
 # log_file = "bwp.log"
 

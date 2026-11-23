@@ -1,7 +1,7 @@
 //! Maps local ports to owning PIDs, built from a connection snapshot.
 //!
 //! The WinDivert NETWORK layer cannot filter by process, so packets are attributed by
-//! looking up their local port in the connection table. A port that belongs to more than
+//! looking up their local port (chosen by packet direction) in the connection table. A port that belongs to more than
 //! one PID is ambiguous and is never attributed (the packet is passed through untouched).
 
 use crate::flow::{PacketFlow, Transport};
@@ -68,17 +68,19 @@ impl PortMap {
 
     /// Finds the process a packet belongs to.
     ///
-    /// The packet direction is not needed: exactly one of the two ports must be a known
-    /// local port. If neither is (unknown flow) or both are (loopback-like or ambiguous),
-    /// `None` is returned and the packet must not be throttled.
+    /// The local endpoint is the source of an outbound packet and the destination of an
+    /// inbound one; only that port is looked up. A remote port that happens to equal a
+    /// local listener's port (e.g. outbound HTTPS while a local service listens on 443)
+    /// therefore does not hide the owner. Unknown or ambiguous ports yield `None` and the
+    /// packet must not be throttled.
     #[must_use]
-    pub fn pid_for(&self, flow: &PacketFlow) -> Option<u32> {
-        let src = self.pid_of(flow.transport, flow.src_port);
-        let dst = self.pid_of(flow.transport, flow.dst_port);
-        match (src, dst) {
-            (Some(pid), None) | (None, Some(pid)) => Some(pid),
-            _ => None,
-        }
+    pub fn pid_for(&self, flow: &PacketFlow, outbound: bool) -> Option<u32> {
+        let local_port = if outbound {
+            flow.src_port
+        } else {
+            flow.dst_port
+        };
+        self.pid_of(flow.transport, local_port)
     }
 }
 
@@ -108,23 +110,54 @@ mod tests {
     #[test]
     fn attributes_outbound_and_inbound_packets() {
         let map = PortMap::from_connections(&[conn(10, Protocol::Tcp, "10.0.0.2:50000")]);
-        assert_eq!(map.pid_for(&flow(Transport::Tcp, 50000, 443)), Some(10));
-        assert_eq!(map.pid_for(&flow(Transport::Tcp, 443, 50000)), Some(10));
+        assert_eq!(
+            map.pid_for(&flow(Transport::Tcp, 50000, 443), true),
+            Some(10)
+        );
+        assert_eq!(
+            map.pid_for(&flow(Transport::Tcp, 443, 50000), false),
+            Some(10)
+        );
+    }
+
+    #[test]
+    fn direction_decides_which_port_is_local() {
+        let map = PortMap::from_connections(&[conn(10, Protocol::Tcp, "10.0.0.2:50000")]);
+        // The local port seen on the wrong side is somebody else's traffic.
+        assert_eq!(map.pid_for(&flow(Transport::Tcp, 50000, 443), false), None);
+        assert_eq!(map.pid_for(&flow(Transport::Tcp, 443, 50000), true), None);
+    }
+
+    #[test]
+    fn remote_port_equal_to_a_local_listener_does_not_hide_the_owner() {
+        // PID 10 talks to a remote HTTPS server while PID 11 listens locally on 443.
+        let map = PortMap::from_connections(&[
+            conn(10, Protocol::Tcp, "10.0.0.2:50000"),
+            conn(11, Protocol::Tcp, "0.0.0.0:443"),
+        ]);
+        assert_eq!(
+            map.pid_for(&flow(Transport::Tcp, 50000, 443), true),
+            Some(10)
+        );
+        assert_eq!(
+            map.pid_for(&flow(Transport::Tcp, 443, 50000), false),
+            Some(10)
+        );
     }
 
     #[test]
     fn protocol_must_match() {
         let map = PortMap::from_connections(&[conn(10, Protocol::Tcp, "10.0.0.2:50000")]);
-        assert_eq!(map.pid_for(&flow(Transport::Udp, 50000, 443)), None);
+        assert_eq!(map.pid_for(&flow(Transport::Udp, 50000, 443), true), None);
     }
 
     #[test]
     fn unknown_flow_is_not_attributed() {
         let map = PortMap::from_connections(&[conn(10, Protocol::Tcp, "10.0.0.2:50000")]);
-        assert_eq!(map.pid_for(&flow(Transport::Tcp, 1111, 2222)), None);
+        assert_eq!(map.pid_for(&flow(Transport::Tcp, 1111, 2222), true), None);
         assert!(
             PortMap::default()
-                .pid_for(&flow(Transport::Tcp, 1, 2))
+                .pid_for(&flow(Transport::Tcp, 1, 2), true)
                 .is_none()
         );
     }
@@ -135,22 +168,16 @@ mod tests {
             conn(10, Protocol::Udp, "0.0.0.0:5353"),
             conn(11, Protocol::Udp, "[::]:5353"),
         ]);
-        assert_eq!(map.pid_for(&flow(Transport::Udp, 5353, 5353)), None);
+        assert_eq!(map.pid_for(&flow(Transport::Udp, 5353, 5353), true), None);
         // The same PID twice (IPv4 + IPv6 socket) is not ambiguous.
         let map = PortMap::from_connections(&[
             conn(10, Protocol::Udp, "0.0.0.0:5353"),
             conn(10, Protocol::Udp, "[::]:5353"),
         ]);
-        assert_eq!(map.pid_for(&flow(Transport::Udp, 40000, 5353)), Some(10));
-    }
-
-    #[test]
-    fn both_ports_local_is_not_attributed() {
-        let map = PortMap::from_connections(&[
-            conn(10, Protocol::Tcp, "10.0.0.2:50000"),
-            conn(11, Protocol::Tcp, "10.0.0.2:8080"),
-        ]);
-        assert_eq!(map.pid_for(&flow(Transport::Tcp, 50000, 8080)), None);
+        assert_eq!(
+            map.pid_for(&flow(Transport::Udp, 40000, 5353), false),
+            Some(10)
+        );
     }
 
     #[test]

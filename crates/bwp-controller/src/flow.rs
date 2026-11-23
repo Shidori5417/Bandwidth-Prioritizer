@@ -1,7 +1,7 @@
 //! Minimal IP/TCP/UDP header parsing used to attribute captured packets to flows.
 //!
 //! Only what the packet shaper needs is extracted: transport protocol and the two ports.
-//! Anything unusual (fragments, IPv6 extension headers, other protocols, truncated
+//! Anything unusual (any IPv4 fragment, IPv6 extension headers, other protocols, truncated
 //! packets) yields `None`, which the shaper treats as "not ours, pass through untouched".
 
 /// Transport protocol of a parsed packet.
@@ -29,7 +29,7 @@ const PROTO_UDP: u8 = 17;
 
 /// Parses an IPv4 or IPv6 packet as delivered by the WinDivert NETWORK layer.
 ///
-/// Returns `None` for non-first fragments, IPv6 packets with extension headers, protocols
+/// Returns `None` for IPv4 fragments (first and later ones), IPv6 packets with extension headers, protocols
 /// other than TCP/UDP and packets too short to contain the ports.
 #[must_use]
 pub fn parse_flow(packet: &[u8]) -> Option<PacketFlow> {
@@ -40,9 +40,11 @@ pub fn parse_flow(packet: &[u8]) -> Option<PacketFlow> {
             if ihl < 20 || packet.len() < ihl {
                 return None;
             }
-            // Flags/fragment offset: only the first fragment has a transport header.
-            let frag_offset = u16::from_be_bytes([*packet.get(6)?, *packet.get(7)?]) & 0x1FFF;
-            if frag_offset != 0 {
+            // Flags/fragment offset: every fragment (offset != 0, or More Fragments set,
+            // which also covers the first one) bypasses the shaper so that a datagram is
+            // never split between shaped and unshaped fragments.
+            let flags_and_offset = u16::from_be_bytes([*packet.get(6)?, *packet.get(7)?]);
+            if flags_and_offset & (0x2000 | 0x1FFF) != 0 {
                 return None;
             }
             (*packet.get(9)?, ihl)
@@ -119,8 +121,9 @@ mod tests {
 
     #[test]
     fn rejects_everything_unusual() {
-        // Non-first fragment.
+        // Non-first fragment, and first fragment (More Fragments set, offset 0).
         assert!(parse_flow(&ipv4(6, 5, 0x00B9, 1, 2)).is_none());
+        assert!(parse_flow(&ipv4(6, 5, 0x2000, 1, 2)).is_none());
         // ICMP, IPv6 extension header (hop-by-hop = 0), ICMPv6.
         assert!(parse_flow(&ipv4(1, 5, 0, 1, 2)).is_none());
         assert!(parse_flow(&ipv6(0, 1, 2)).is_none());

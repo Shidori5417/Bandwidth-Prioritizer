@@ -25,6 +25,9 @@ pub enum EngineEvent {
 pub struct Engine<C: TrafficController> {
     /// Lock-free cache: PID -> Executable Name
     pid_cache: DashMap<u32, Arc<str>>,
+    /// Start time (seconds since the epoch) of the process each cached name was resolved
+    /// from. A different start time for the same PID means the PID was reused.
+    pid_start: DashMap<u32, u64>,
     /// Current zero-cost config reference
     config_manager: Arc<ConfigManager>,
     /// Traffic interceptor interface
@@ -36,6 +39,9 @@ pub struct Engine<C: TrafficController> {
     /// Number of currently open connections per PID. A PID is only forgotten
     /// when its last connection closes.
     connection_counts: HashMap<u32, usize>,
+    /// `Closed` events still to come from a previous process that owned a PID which was
+    /// then reused (the monitor emits `Opened` before `Closed` within one snapshot).
+    stale_closes: HashMap<u32, usize>,
     /// PIDs currently identified as priority apps
     priority_pids: HashSet<u32>,
     /// PIDs currently identified as normal apps (throttable)
@@ -54,6 +60,8 @@ impl<C: TrafficController + 'static> Engine<C> {
         let reload_rx = config_manager.subscribe_reloads();
         Self {
             pid_cache: DashMap::new(),
+            pid_start: DashMap::new(),
+            stale_closes: HashMap::new(),
             config_manager,
             reload_rx,
             controller,
@@ -270,9 +278,31 @@ impl<C: TrafficController + 'static> Engine<C> {
     /// Forgets the cached executable name of a PID (called when its last connection closes).
     pub fn drop_process_from_cache(&self, pid: u32) {
         let _ = self.pid_cache.remove(&pid);
+        let _ = self.pid_start.remove(&pid);
+    }
+
+    /// Whether `pid` now belongs to a different process than the one its cached name came
+    /// from. Entries whose process cannot be inspected are given the benefit of the doubt.
+    fn pid_was_reused(&self, pid: u32) -> bool {
+        let Some(cached) = self.pid_start.get(&pid).map(|s| *s) else {
+            return false;
+        };
+        lookup_process_identity(pid).is_some_and(|(_, start)| start != cached)
     }
 
     async fn handle_connection_opened(&mut self, pid: u32) {
+        // The OS reuses PIDs. When a replacement process shows up before the old one's
+        // `Closed` events were processed (same poll snapshot), drop everything known about
+        // the old process and swallow its remaining `Closed` events.
+        if self.pid_was_reused(pid) {
+            let stale = self.connection_counts.remove(&pid).unwrap_or(0);
+            if stale > 0 {
+                *self.stale_closes.entry(pid).or_insert(0) += stale;
+            }
+            info!("PID {pid} was reused by a new process; reclassifying");
+            self.forget_pid(pid).await;
+        }
+
         *self.connection_counts.entry(pid).or_insert(0) += 1;
 
         // 1. Resolve Name O(1) mostly
@@ -306,6 +336,13 @@ impl<C: TrafficController + 'static> Engine<C> {
     }
 
     async fn handle_connection_closed(&mut self, pid: u32) {
+        if let Some(stale) = self.stale_closes.get_mut(&pid) {
+            *stale -= 1;
+            if *stale == 0 {
+                let _ = self.stale_closes.remove(&pid);
+            }
+            return;
+        }
         // A process usually owns several connections: only forget it once the last one is gone.
         if let Some(count) = self.connection_counts.get_mut(&pid) {
             *count = count.saturating_sub(1);
@@ -314,8 +351,13 @@ impl<C: TrafficController + 'static> Engine<C> {
             }
             let _ = self.connection_counts.remove(&pid);
         }
-        // The process no longer has any tracked connection: forget its name so that a
-        // later process reusing this PID is classified by its own executable.
+        self.forget_pid(pid).await;
+    }
+
+    /// Forgets a process that has no tracked connection left: its cached name (so that a
+    /// later process reusing the PID is classified by its own executable), its
+    /// classification and its throttle.
+    async fn forget_pid(&mut self, pid: u32) {
         self.drop_process_from_cache(pid);
 
         if self.normal_pids.remove(&pid) && self.state == ThrottleState::PriorityMode {
@@ -433,17 +475,19 @@ impl<C: TrafficController + 'static> Engine<C> {
         }
 
         // Cache miss: ask the OS (via `sysinfo`, cross-platform).
-        if let Some(name) = lookup_process_name(pid) {
+        if let Some((name, start)) = lookup_process_identity(pid) {
             let name: Arc<str> = Arc::from(name);
             let _ = self.pid_cache.insert(pid, name.clone());
+            let _ = self.pid_start.insert(pid, start);
             return name;
         }
         Arc::from(format!("unknown_{pid}.exe"))
     }
 }
 
-/// Looks up the process name for `pid` using the operating system's process table.
-fn lookup_process_name(pid: u32) -> Option<String> {
+/// Looks up the process name and start time for `pid` using the operating system's
+/// process table.
+fn lookup_process_identity(pid: u32) -> Option<(String, u64)> {
     use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
 
     let pid = Pid::from_u32(pid);
@@ -453,8 +497,9 @@ fn lookup_process_name(pid: u32) -> Option<String> {
         true,
         ProcessRefreshKind::nothing(),
     );
-    let name = system.process(pid)?.name().to_string_lossy().into_owned();
-    (!name.is_empty()).then_some(name)
+    let process = system.process(pid)?;
+    let name = process.name().to_string_lossy().into_owned();
+    (!name.is_empty()).then(|| (name, process.start_time()))
 }
 
 #[cfg(test)]
@@ -598,6 +643,51 @@ mod tests {
         engine.handle_connection_opened(10).await;
         assert!(engine.normal_pids.contains(&10));
         assert!(engine.priority_pids.is_empty());
+    }
+
+    #[tokio::test]
+    async fn reused_pid_in_the_same_snapshot_is_reclassified() {
+        let (mut engine, _) = default_engine();
+        // The current process stands in for the *new* owner of the PID; the cache still
+        // holds the name of the previous owner (a critical app) with another start time.
+        let pid = std::process::id();
+        let real_start = lookup_process_identity(pid).unwrap().1;
+        seed_name(&engine, pid, "discord.exe");
+        let _ = engine.pid_start.insert(pid, real_start + 1000);
+        engine.connection_counts.insert(pid, 2);
+        engine.priority_pids.insert(pid);
+        engine.state = ThrottleState::PriorityMode;
+
+        // The replacement process opens a connection before the old Closed events arrive.
+        engine.handle_connection_opened(pid).await;
+        assert!(!engine.priority_pids.contains(&pid));
+        assert!(engine.normal_pids.contains(&pid));
+        assert_eq!(engine.connection_counts.get(&pid), Some(&1));
+        assert_ne!(engine.pid_cache.get(&pid).unwrap().as_ref(), "discord.exe");
+        // The only priority process is gone, so the engine left Priority Mode.
+        assert_eq!(engine.state, ThrottleState::Normal);
+
+        // The two stale Closed events of the old process must not touch the new one.
+        engine.handle_connection_closed(pid).await;
+        engine.handle_connection_closed(pid).await;
+        assert!(engine.normal_pids.contains(&pid));
+        assert_eq!(engine.connection_counts.get(&pid), Some(&1));
+        assert!(engine.stale_closes.is_empty());
+
+        // Its own close is processed normally.
+        engine.handle_connection_closed(pid).await;
+        assert!(!engine.normal_pids.contains(&pid));
+        assert!(!engine.pid_cache.contains_key(&pid));
+    }
+
+    #[tokio::test]
+    async fn unverifiable_cache_entries_are_kept() {
+        let (mut engine, _) = default_engine();
+        seed_name(&engine, 10, "discord.exe");
+        let _ = engine.pid_start.insert(10, 5);
+        // PID 10 is not a running process here: nothing can disprove the cached name.
+        engine.handle_connection_opened(10).await;
+        assert!(engine.priority_pids.contains(&10));
     }
 
     #[tokio::test]

@@ -228,7 +228,7 @@ fn capture_loop(handle: &Handle, shared: &Shared, refresher: &thread::Thread) {
         // One short critical section: attribute the packet and see whether it is throttled.
         let (pid, throttled) = {
             let state = lock(&shared.state);
-            let pid = flow.and_then(|f| state.ports.pid_for(&f));
+            let pid = flow.and_then(|f| state.ports.pid_for(&f, address.outbound()));
             (pid, state.shaper.is_throttled(pid))
         };
         if pid.is_none()

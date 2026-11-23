@@ -21,7 +21,8 @@ critical_apps = [
 default_throttle_limit_kbps = 1000
 
 [general]
-# Process monitor polling interval (milliseconds)
+# Process monitor polling interval (milliseconds). Read once at startup: restart the
+# engine after changing it (the other settings are hot-reloaded).
 poll_interval_ms = 500
 
 # Log verbosity: trace, debug, info, warn, error

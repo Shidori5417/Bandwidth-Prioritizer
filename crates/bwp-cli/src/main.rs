@@ -103,6 +103,15 @@ async fn main() -> Result<()> {
 
     match args.command {
         CliCommand::Start => {
+            // The engine only runs on Windows; the Linux binary is a stub that exits with an
+            // error. Do not spawn it and race its exit against a timer.
+            if !cfg!(windows) {
+                anyhow::bail!(
+                    "the bwp-engine daemon only runs on Windows; this host is unsupported \
+                     (the Linux build exists for development and CI only)"
+                );
+            }
+
             if let Ok(Some(pid)) = bwp_core::pid::read_pid() {
                 if bwp_core::pid::is_process_running(pid) {
                     println!("Engine is already running (PID: {})", pid);
