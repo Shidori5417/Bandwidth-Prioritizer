@@ -225,8 +225,8 @@ mod tests {
         assert_eq!(limit.as_kbps(), 500);
 
         let apps = config.critical_apps_for_profile("gaming");
-        assert!(apps.contains(&"steam.exe".to_string()));
-        assert!(apps.contains(&"discord".to_string()));
+        assert!(apps.iter().any(|a| a == "steam.exe"));
+        assert!(apps.iter().any(|a| a == "discord"));
     }
 
     #[test]
