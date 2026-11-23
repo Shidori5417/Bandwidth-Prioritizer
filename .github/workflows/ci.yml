@@ -36,6 +36,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The experimental-windivert feature (enabled by --all-features) links against the
+      # official WinDivert SDK; fetch it, verified by checksum, on the Windows legs.
+      - name: Download WinDivert SDK
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $zip = Join-Path $env:RUNNER_TEMP "windivert.zip"
+          Invoke-WebRequest -Uri "https://github.com/basil00/WinDivert/releases/download/v2.2.2/WinDivert-2.2.2-A.zip" -OutFile $zip
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+          if ($hash -ne "63cb41763bb4b20f600b6de04e991a9c2be73279e317d4d82f237b150c5f3f15") { throw "WinDivert checksum mismatch: $hash" }
+          Expand-Archive -Path $zip -DestinationPath (Join-Path $env:RUNNER_TEMP "windivert")
+          $dir = Join-Path $env:RUNNER_TEMP "windivert\WinDivert-2.2.2-A\x64"
+          "WINDIVERT_PATH=$dir" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          # Test binaries load WinDivert.dll at startup.
+          $dir | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@master
         with:

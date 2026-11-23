@@ -5,7 +5,16 @@ Builds and packages Bandwidth-Prioritizer (bwp) for Windows release.
 .DESCRIPTION
 This script compiles the project in release mode and copies the necessary
 binaries and configuration files into a zip archive for distribution.
+
+.PARAMETER WithWinDivert
+Builds the EXPERIMENTAL packet shaper (Cargo feature `experimental-windivert`). Downloads
+the official WinDivert 2.2.2 release (checksum verified), links against it and ships
+WinDivert.dll, WinDivert64.sys and the WinDivert license in the zip (name suffix
+"-windivert"). Without this switch no WinDivert file is built or packaged.
 #>
+param(
+    [switch]$WithWinDivert
+)
 
 $ErrorActionPreference = "Stop"
 
@@ -16,11 +25,37 @@ $ReleaseDir = Join-Path $ProjectRoot "target\bwp-release"
 $VersionMatch = Select-String -Path (Join-Path $ProjectRoot "Cargo.toml") -Pattern '^\s*version\s*=\s*"([^"]+)"' | Select-Object -First 1
 if (-not $VersionMatch) { throw "Could not read the version from Cargo.toml" }
 $Version = $VersionMatch.Matches[0].Groups[1].Value
-$ZipFile = Join-Path $ProjectRoot "target\bwp-windows-v$Version.zip"
+$Suffix = if ($WithWinDivert) { "-windivert" } else { "" }
+$ZipFile = Join-Path $ProjectRoot "target\bwp-windows-v$Version$Suffix.zip"
+
+Set-Location $ProjectRoot
+
+$WinDivertDir = $null
+if ($WithWinDivert) {
+    $WdVersion = "2.2.2"
+    $WdSha256 = "63cb41763bb4b20f600b6de04e991a9c2be73279e317d4d82f237b150c5f3f15"
+    $WdRoot = Join-Path $ProjectRoot "target\windivert"
+    $WdZip = Join-Path $WdRoot "WinDivert-$WdVersion-A.zip"
+    New-Item -ItemType Directory -Force -Path $WdRoot | Out-Null
+    if (-not (Test-Path $WdZip)) {
+        Write-Host "[*] Downloading WinDivert $WdVersion..." -ForegroundColor Cyan
+        Invoke-WebRequest -Uri "https://github.com/basil00/WinDivert/releases/download/v$WdVersion/WinDivert-$WdVersion-A.zip" -OutFile $WdZip
+    }
+    $Hash = (Get-FileHash $WdZip -Algorithm SHA256).Hash.ToLower()
+    if ($Hash -ne $WdSha256) { throw "WinDivert checksum mismatch: $Hash" }
+    Expand-Archive -Path $WdZip -DestinationPath $WdRoot -Force
+    $WinDivertSdk = Join-Path $WdRoot "WinDivert-$WdVersion-A"
+    $WinDivertDir = Join-Path $WinDivertSdk "x64"
+    $env:WINDIVERT_PATH = $WinDivertDir
+}
 
 Write-Host "[*] Building Bandwidth-Prioritizer in release mode..." -ForegroundColor Cyan
-Set-Location $ProjectRoot
-cargo build --release
+if ($WithWinDivert) {
+    cargo build --release --features bwp-engine/experimental-windivert
+} else {
+    cargo build --release
+}
+if ($LASTEXITCODE -ne 0) { throw "cargo build failed" }
 
 Write-Host "[*] Preparing release folder at $ReleaseDir..." -ForegroundColor Cyan
 if (Test-Path $ReleaseDir) {
@@ -45,6 +80,14 @@ foreach ($File in $FilesToPackage) {
     } else {
         Write-Host "  x Missing file: $File" -ForegroundColor Red
     }
+}
+
+if ($WithWinDivert) {
+    foreach ($File in @("WinDivert.dll", "WinDivert64.sys")) {
+        Copy-Item -Path (Join-Path $WinDivertDir $File) -Destination $ReleaseDir -Force
+        Write-Host "  v Copied $File (WinDivert $WdVersion)" -ForegroundColor Green
+    }
+    Copy-Item -Path (Join-Path $WinDivertSdk "LICENSE") -Destination (Join-Path $ReleaseDir "WinDivert-LICENSE.txt") -Force
 }
 
 Write-Host "[*] Creating zip archive..." -ForegroundColor Cyan

@@ -11,18 +11,37 @@ mod poll;
 
 use crate::traits::ProcessMonitor;
 use bwp_core::{BwpResult, ConnectionInfo, MonitorEvent, ProcessInfo};
+use std::time::Duration;
 use tokio::sync::mpsc;
 use tracing::{info, warn};
 
 /// Windows process monitor (ETW is not implemented, so it polls the IP Helper tables).
-#[derive(Debug, Default)]
-pub struct WindowsMonitor {}
+#[derive(Debug)]
+pub struct WindowsMonitor {
+    poll_interval: Duration,
+}
+
+impl Default for WindowsMonitor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl WindowsMonitor {
-    /// Creates a new Windows monitor.
+    /// Creates a monitor polling every 500 ms.
     #[must_use]
     pub const fn new() -> Self {
-        Self {}
+        Self {
+            poll_interval: poll::DEFAULT_POLL_INTERVAL,
+        }
+    }
+
+    /// Creates a monitor with a custom polling interval (clamped to 100 ms ..= 10 s).
+    #[must_use]
+    pub fn with_poll_interval(interval: Duration) -> Self {
+        Self {
+            poll_interval: interval.clamp(Duration::from_millis(100), Duration::from_secs(10)),
+        }
     }
 }
 
@@ -38,7 +57,7 @@ impl ProcessMonitor for WindowsMonitor {
             );
 
             // Fallback to polling.
-            poll::spawn_polling_loop(tx);
+            poll::spawn_polling_loop(tx, self.poll_interval);
         } else {
             info!("ETW connection monitor successfully started.");
         }

@@ -30,6 +30,14 @@ log_level = "info"
 # Optional: log file path (omit for stdout only)
 # log_file = "bwp.log"
 
+# ─── Packet shaping (EXPERIMENTAL) ──────────
+# Off by default: without it no packet is ever captured and nothing is limited.
+# Turning it on needs a bwp-engine built with the `experimental-windivert` feature
+# (zip name ending in "-windivert"), Administrator rights, and WinDivert.dll +
+# WinDivert64.sys next to bwp-engine.exe. Read at startup; restart the engine to apply.
+[shaping]
+experimental_windivert = false
+
 # ─── Profiles ───────────────────────────────
 # Named presets for quick switching via `bwp profile <name>`.
 

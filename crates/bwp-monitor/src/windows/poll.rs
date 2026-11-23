@@ -1,6 +1,6 @@
 //! Polling connection monitor built on the IP Helper API.
 //!
-//! Every [`POLL_INTERVAL`] the TCP (IPv4 and IPv6) and UDP tables are read with
+//! Every poll interval (500 ms by default, `[general] poll_interval_ms`) the TCP (IPv4 and IPv6) and UDP tables are read with
 //! `GetExtendedTcpTable` / `GetExtendedUdpTable`, and the difference to the previous
 //! snapshot is turned into [`MonitorEvent`]s by [`ConnectionTracker`].
 //!
@@ -29,15 +29,15 @@ use crate::table::{
     udp_connection,
 };
 
-/// Delay between two snapshots.
-const POLL_INTERVAL: Duration = Duration::from_millis(500);
+/// Default delay between two snapshots.
+pub const DEFAULT_POLL_INTERVAL: Duration = Duration::from_millis(500);
 
 /// Spawns the asynchronous polling loop.
-pub fn spawn_polling_loop(tx: mpsc::Sender<MonitorEvent>) {
+pub fn spawn_polling_loop(tx: mpsc::Sender<MonitorEvent>, poll_interval: Duration) {
     drop(tokio::spawn(async move {
         info!("Connection polling started (GetExtendedTcpTable / GetExtendedUdpTable).");
         let mut tracker = ConnectionTracker::new();
-        let mut ticker = interval(POLL_INTERVAL);
+        let mut ticker = interval(poll_interval);
         ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
         loop {

@@ -15,5 +15,18 @@ thiserror = { workspace = true }
 tracing = { workspace = true }
 tokio = { workspace = true }
 
+[features]
+default = []
+# EXPERIMENTAL, opt-in WinDivert packet shaper (Windows only). Building it needs the
+# WinDivert SDK files, see the README ("Experimental packet shaping").
+experimental-windivert = ["dep:windivert-sys", "dep:windows48", "dep:bwp-monitor"]
+
+[target.'cfg(windows)'.dependencies]
+bwp-monitor = { workspace = true, optional = true }
+# Raw bindings; the SDK (WinDivert.dll/.lib) is located through the WINDIVERT_PATH env var.
+windivert-sys = { version = "0.10", optional = true }
+# `windivert-sys` is built against windows 0.48; its HANDLE/BOOL types come from there.
+windows48 = { package = "windows", version = "0.48", features = ["Win32_Foundation"], optional = true }
+
 [lints]
 workspace = true

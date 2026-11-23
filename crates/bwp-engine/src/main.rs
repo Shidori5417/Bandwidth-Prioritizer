@@ -77,8 +77,28 @@ mod windows_main {
             return Err(e.into());
         }
 
-        // 1. Initialize Monitor
-        let monitor = Monitor::new();
+        // 1. Initialize Config Manager. The path is resolved relative to the executable
+        // (a service starts in System32), and defaults are used if it cannot be loaded.
+        let config_path = resolve_config_path();
+        info!("Using configuration file {}", config_path.display());
+        let config_manager = Arc::new(ConfigManager::new_or_default(&config_path));
+        if !config_path.exists() {
+            warn!(
+                "Configuration file {} not found, running with built-in defaults. \
+                 Set BWP_CONFIG or place config.toml next to bwp-engine.exe.",
+                config_path.display()
+            );
+        }
+        config_manager.spawn_hot_reload_task();
+
+        // 2. Initialize Monitor (poll interval from the config)
+        let poll_interval_ms = config_manager
+            .get_shared_config()
+            .load()
+            .general
+            .poll_interval_ms;
+        let monitor =
+            Monitor::with_poll_interval(std::time::Duration::from_millis(poll_interval_ms));
         let mut monitor_rx = monitor.watch_connections().await?;
 
         // Convert monitor events to engine events
@@ -97,22 +117,14 @@ mod windows_main {
             }
         });
 
-        // 2. Initialize Controller
-        let controller = Arc::new(WindowsController::new()?);
-
-        // 3. Initialize Config Manager. The path is resolved relative to the executable
-        // (a service starts in System32), and defaults are used if it cannot be loaded.
-        let config_path = resolve_config_path();
-        info!("Using configuration file {}", config_path.display());
-        let config_manager = Arc::new(ConfigManager::new_or_default(&config_path));
-        if !config_path.exists() {
-            warn!(
-                "Configuration file {} not found, running with built-in defaults. \
-                 Set BWP_CONFIG or place config.toml next to bwp-engine.exe.",
-                config_path.display()
-            );
-        }
-        config_manager.spawn_hot_reload_task();
+        // 3. Initialize Controller. Packet shaping is opt-in: it needs the
+        // `experimental-windivert` build feature and `[shaping] experimental_windivert`.
+        let experimental_windivert = config_manager
+            .get_shared_config()
+            .load()
+            .shaping
+            .experimental_windivert;
+        let controller = Arc::new(WindowsController::with_shaping(experimental_windivert)?);
 
         // 4. Start IPC Server
         let ipc_engine_tx = engine_tx.clone();
