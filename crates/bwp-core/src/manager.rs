@@ -13,7 +13,7 @@ use notify::{Event, RecursiveMode, Watcher};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, watch};
 use tracing::{error, info, warn};
 
 /// Thread-safe, lock-free configuration registry.
@@ -25,6 +25,8 @@ pub struct ConfigManager {
     current: Arc<ArcSwap<AppConfig>>,
     /// Path to the config file being watched.
     config_path: PathBuf,
+    /// Counts successful reloads; subscribers are woken after each one.
+    reload_tx: Arc<watch::Sender<u64>>,
 }
 
 impl ConfigManager {
@@ -37,6 +39,7 @@ impl ConfigManager {
         Ok(Self {
             current: Arc::new(ArcSwap::from_pointee(config)),
             config_path,
+            reload_tx: Arc::new(watch::channel(0).0),
         })
     }
 
@@ -54,7 +57,29 @@ impl ConfigManager {
         Self {
             current: Arc::new(ArcSwap::from_pointee(config)),
             config_path,
+            reload_tx: Arc::new(watch::channel(0).0),
         }
+    }
+
+    /// Subscribes to successful configuration reloads.
+    ///
+    /// The receiver's value is a reload counter; `changed().await` resolves after the
+    /// new config has been stored, so listeners can re-evaluate state against it.
+    #[must_use]
+    pub fn subscribe_reloads(&self) -> watch::Receiver<u64> {
+        self.reload_tx.subscribe()
+    }
+
+    /// Re-reads the config file now. On success the new config is swapped in and
+    /// reload subscribers are notified; on failure the previous config is kept.
+    ///
+    /// # Errors
+    /// Returns the read/parse error; the active configuration is left untouched.
+    pub fn reload(&self) -> BwpResult<()> {
+        let new_config = Self::load_file(&self.config_path)?;
+        self.current.store(Arc::new(new_config));
+        self.reload_tx.send_modify(|generation| *generation += 1);
+        Ok(())
     }
 
     /// Read the `AppConfig` from a TOML file.
@@ -88,7 +113,10 @@ impl ConfigManager {
     pub fn spawn_hot_reload_task(&self) {
         let (tx, mut rx) = mpsc::channel::<()>(1);
         let path_clone = self.config_path.clone();
-        let shared_config = self.current.clone();
+        let reloader = ReloadHandle {
+            current: self.current.clone(),
+            reload_tx: self.reload_tx.clone(),
+        };
 
         // Standard library thread because `notify::RecommendedWatcher` is synchronous/blocking in its callback.
         // We bridge it to the async world via a tokio channel.
@@ -141,11 +169,9 @@ impl ConfigManager {
             info!("Hot-reload watcher started on {:?}", file_path);
 
             while wait_for_settled(&mut rx, RELOAD_QUIET_PERIOD).await {
-                match Self::load_file(&file_path) {
-                    Ok(new_config) => {
+                match reloader.reload(&file_path) {
+                    Ok(()) => {
                         info!("Configuration hot-reloaded successfully.");
-                        // The magic happens here: atomic pointer replacement!
-                        shared_config.store(Arc::new(new_config));
                     }
                     Err(e) => {
                         error!("Hot-reload failed, retaining old config. Error: {e}");
@@ -153,6 +179,22 @@ impl ConfigManager {
                 }
             }
         });
+    }
+}
+
+/// The pieces of a [`ConfigManager`] the hot-reload task needs.
+struct ReloadHandle {
+    current: Arc<ArcSwap<AppConfig>>,
+    reload_tx: Arc<watch::Sender<u64>>,
+}
+
+impl ReloadHandle {
+    fn reload(&self, path: &Path) -> BwpResult<()> {
+        let new_config = ConfigManager::load_file(path)?;
+        // Atomic pointer replacement, then wake the subscribers.
+        self.current.store(Arc::new(new_config));
+        self.reload_tx.send_modify(|generation| *generation += 1);
+        Ok(())
     }
 }
 
@@ -206,6 +248,27 @@ mod tests {
 
         // Cleanup
         let _ = std::fs::remove_file(file_path);
+    }
+
+    #[tokio::test]
+    async fn reload_swaps_config_and_notifies_subscribers() {
+        let path = std::env::temp_dir().join(format!("bwp_reload_{}.toml", std::process::id()));
+        std::fs::write(&path, "critical_apps = [\"a\"]").unwrap();
+        let manager = ConfigManager::new(&path).unwrap();
+        let mut rx = manager.subscribe_reloads();
+
+        std::fs::write(&path, "critical_apps = [\"b\"]").unwrap();
+        manager.reload().unwrap();
+        rx.changed().await.unwrap();
+        assert_eq!(*rx.borrow(), 1);
+        assert_eq!(manager.get_shared_config().load().critical_apps, ["b"]);
+
+        // A broken file keeps the old config and does not notify.
+        std::fs::write(&path, "[general\n").unwrap();
+        assert!(manager.reload().is_err());
+        assert_eq!(manager.get_shared_config().load().critical_apps, ["b"]);
+        assert!(!rx.has_changed().unwrap());
+        let _ = std::fs::remove_file(&path);
     }
 
     #[tokio::test]

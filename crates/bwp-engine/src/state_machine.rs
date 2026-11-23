@@ -10,7 +10,7 @@ use bwp_core::ipc::{IpcCommand, IpcResponse};
 use bwp_core::manager::ConfigManager;
 use bwp_core::{AppConfig, BandwidthLimit, BwpResult, MonitorEvent, ThrottleState};
 use dashmap::DashMap;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{mpsc, oneshot, watch};
 use tracing::{debug, info, warn};
 
 /// A unified event wrapping raw network detections alongside IPC administrative queries.
@@ -29,6 +29,8 @@ pub struct Engine<C: TrafficController> {
     config_manager: Arc<ConfigManager>,
     /// Traffic interceptor interface
     controller: Arc<C>,
+    /// Woken after every successful config reload.
+    reload_rx: watch::Receiver<u64>,
 
     // Local State
     /// Number of currently open connections per PID. A PID is only forgotten
@@ -49,9 +51,11 @@ pub struct Engine<C: TrafficController> {
 impl<C: TrafficController + 'static> Engine<C> {
     /// Creates an engine in `Normal` state with no tracked processes.
     pub fn new(config_manager: Arc<ConfigManager>, controller: Arc<C>) -> Self {
+        let reload_rx = config_manager.subscribe_reloads();
         Self {
             pid_cache: DashMap::new(),
             config_manager,
+            reload_rx,
             controller,
             connection_counts: HashMap::new(),
             priority_pids: HashSet::new(),
@@ -95,7 +99,22 @@ impl<C: TrafficController + 'static> Engine<C> {
     ) -> BwpResult<()> {
         info!("Bandwidth Engine state machine running...");
 
-        while let Some(event) = event_rx.recv().await {
+        let mut reloads_open = true;
+        loop {
+            let event = tokio::select! {
+                event = event_rx.recv() => match event {
+                    Some(event) => event,
+                    None => break,
+                },
+                changed = self.reload_rx.changed(), if reloads_open => {
+                    if changed.is_ok() {
+                        self.handle_config_reloaded().await;
+                    } else {
+                        reloads_open = false;
+                    }
+                    continue;
+                }
+            };
             match event {
                 EngineEvent::Monitor(MonitorEvent::ConnectionOpened(info)) => {
                     self.handle_connection_opened(info.pid).await;
@@ -121,6 +140,34 @@ impl<C: TrafficController + 'static> Engine<C> {
             .send_command(ThrottleCommand::ClearAll)
             .await;
         Ok(())
+    }
+
+    /// Re-evaluates every tracked PID after the configuration was reloaded.
+    ///
+    /// The set of critical apps, the profiles and the throttle limit may all have changed,
+    /// so PIDs are re-sorted into priority/normal, the mode is entered or left as needed
+    /// and limits are re-applied. An active profile that no longer exists is cleared.
+    async fn handle_config_reloaded(&mut self) {
+        let msg = "Configuration reloaded: re-evaluating tracked processes.".to_string();
+        info!("{}", msg);
+        self.push_event(msg);
+
+        let missing_profile = self.active_profile.as_ref().filter(|name| {
+            !self
+                .config_manager
+                .get_shared_config()
+                .load()
+                .profiles
+                .contains_key(name.as_str())
+        });
+        if let Some(name) = missing_profile.cloned() {
+            let msg = format!("Profile '{name}' no longer exists, reverting to default settings.");
+            warn!("{}", msg);
+            self.push_event(msg);
+            self.active_profile = None;
+        }
+
+        self.re_evaluate_connections().await;
     }
 
     /// Dynamically evaluates CLI/UI administration triggers
@@ -576,5 +623,188 @@ mod tests {
             }
             other => panic!("unexpected response: {other:?}"),
         }
+    }
+
+    /// Writes `content` to a unique temp file and returns its path.
+    fn temp_config(tag: &str, content: &str) -> std::path::PathBuf {
+        let path =
+            std::env::temp_dir().join(format!("bwp_engine_{tag}_{}.toml", std::process::id()));
+        std::fs::write(&path, content).unwrap();
+        path
+    }
+
+    fn commands(controller: &MockController) -> Vec<ThrottleCommand> {
+        std::mem::take(&mut *controller.commands.lock().unwrap())
+    }
+
+    #[tokio::test]
+    async fn reload_promotes_pid_when_it_becomes_critical() {
+        let path = temp_config(
+            "promote",
+            "critical_apps = [\"discord\"]\ndefault_throttle_limit_kbps = 1000\n",
+        );
+        let manager = ConfigManager::new(&path).unwrap();
+        let (mut engine, controller) = engine_with(manager);
+        seed_name(&engine, 10, "discord.exe");
+        seed_name(&engine, 20, "chrome.exe");
+        engine.handle_connection_opened(10).await;
+        engine.handle_connection_opened(20).await;
+        assert!(engine.normal_pids.contains(&20));
+        let _ = commands(&controller);
+
+        std::fs::write(
+            &path,
+            "critical_apps = [\"discord\", \"chrome\"]\ndefault_throttle_limit_kbps = 1000\n",
+        )
+        .unwrap();
+        engine.config_manager.reload().unwrap();
+        engine.handle_config_reloaded().await;
+        let _ = std::fs::remove_file(&path);
+
+        assert!(engine.priority_pids.contains(&20));
+        assert!(!engine.normal_pids.contains(&20));
+        assert_eq!(engine.state, ThrottleState::PriorityMode);
+        assert!(commands(&controller).contains(&ThrottleCommand::RemoveLimit { pid: 20 }));
+    }
+
+    #[tokio::test]
+    async fn reload_demotes_last_priority_pid_and_leaves_priority_mode() {
+        let path = temp_config("demote", "critical_apps = [\"discord\"]\n");
+        let manager = ConfigManager::new(&path).unwrap();
+        let (mut engine, controller) = engine_with(manager);
+        seed_name(&engine, 10, "discord.exe");
+        seed_name(&engine, 20, "chrome.exe");
+        engine.handle_connection_opened(10).await;
+        engine.handle_connection_opened(20).await;
+        assert_eq!(engine.state, ThrottleState::PriorityMode);
+        let _ = commands(&controller);
+
+        std::fs::write(&path, "critical_apps = [\"zoom\"]\n").unwrap();
+        engine.config_manager.reload().unwrap();
+        engine.handle_config_reloaded().await;
+        let _ = std::fs::remove_file(&path);
+
+        assert!(engine.priority_pids.is_empty());
+        assert!(engine.normal_pids.contains(&10) && engine.normal_pids.contains(&20));
+        assert_eq!(engine.state, ThrottleState::Normal);
+        assert!(commands(&controller).contains(&ThrottleCommand::ClearAll));
+    }
+
+    #[tokio::test]
+    async fn reload_enters_priority_mode_for_already_tracked_pid() {
+        let path = temp_config("enter", "critical_apps = [\"zoom\"]\n");
+        let manager = ConfigManager::new(&path).unwrap();
+        let (mut engine, controller) = engine_with(manager);
+        seed_name(&engine, 20, "chrome.exe");
+        seed_name(&engine, 30, "spotify.exe");
+        engine.handle_connection_opened(20).await;
+        engine.handle_connection_opened(30).await;
+        assert_eq!(engine.state, ThrottleState::Normal);
+        let _ = commands(&controller);
+
+        std::fs::write(
+            &path,
+            "critical_apps = [\"chrome\"]\ndefault_throttle_limit_kbps = 250\n",
+        )
+        .unwrap();
+        engine.config_manager.reload().unwrap();
+        engine.handle_config_reloaded().await;
+        let _ = std::fs::remove_file(&path);
+
+        assert_eq!(engine.state, ThrottleState::PriorityMode);
+        assert_eq!(
+            commands(&controller),
+            vec![ThrottleCommand::ApplyLimit {
+                pid: 30,
+                limit: BandwidthLimit::from_kbps(250)
+            }]
+        );
+    }
+
+    #[tokio::test]
+    async fn reload_reapplies_changed_limit_and_drops_removed_profile() {
+        let path = temp_config(
+            "limit",
+            "critical_apps = [\"discord\"]\ndefault_throttle_limit_kbps = 1000\n\n\
+             [profiles.gaming]\nthrottle_limit_kbps = 500\n",
+        );
+        let manager = ConfigManager::new(&path).unwrap();
+        let (mut engine, controller) = engine_with(manager);
+        seed_name(&engine, 10, "discord.exe");
+        seed_name(&engine, 20, "chrome.exe");
+        engine.handle_connection_opened(10).await;
+        engine.handle_connection_opened(20).await;
+        let _ = engine
+            .handle_ipc_command(IpcCommand::ApplyProfile("gaming".into()))
+            .await;
+        let _ = commands(&controller);
+
+        // The profile disappears and the global limit changes.
+        std::fs::write(
+            &path,
+            "critical_apps = [\"discord\"]\ndefault_throttle_limit_kbps = 300\n",
+        )
+        .unwrap();
+        engine.config_manager.reload().unwrap();
+        engine.handle_config_reloaded().await;
+        let _ = std::fs::remove_file(&path);
+
+        assert_eq!(engine.active_profile, None);
+        assert_eq!(engine.state, ThrottleState::PriorityMode);
+        assert_eq!(
+            commands(&controller),
+            vec![ThrottleCommand::ApplyLimit {
+                pid: 20,
+                limit: BandwidthLimit::from_kbps(300)
+            }]
+        );
+    }
+
+    #[tokio::test]
+    async fn event_loop_reacts_to_hot_reload_signal() {
+        let path = temp_config("looped", "critical_apps = [\"discord\"]\n");
+        let manager = ConfigManager::new(&path).unwrap();
+        let (mut engine, _) = engine_with(manager);
+        let manager = engine.config_manager.clone();
+        seed_name(&engine, 10, "discord.exe");
+        seed_name(&engine, 20, "chrome.exe");
+        engine.handle_connection_opened(10).await;
+        engine.handle_connection_opened(20).await;
+
+        let (tx, rx) = mpsc::channel(8);
+        let task = tokio::spawn(async move {
+            let _ = engine.run_event_loop(rx).await;
+        });
+
+        std::fs::write(&path, "critical_apps = [\"zoom\"]\n").unwrap();
+        manager.reload().unwrap();
+        let _ = std::fs::remove_file(&path);
+
+        // Poll the status over IPC until the loop has processed the reload.
+        let mut priority = usize::MAX;
+        for _ in 0..100 {
+            let (resp_tx, resp_rx) = oneshot::channel();
+            tx.send(EngineEvent::Ipc(IpcCommand::Status, resp_tx))
+                .await
+                .unwrap();
+            if let IpcResponse::StatusPayload {
+                priority_pids_count,
+                ..
+            } = resp_rx.await.unwrap()
+            {
+                priority = priority_pids_count;
+            }
+            if priority == 0 {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        assert_eq!(priority, 0);
+
+        let (resp_tx, _resp_rx) = oneshot::channel();
+        tx.send(EngineEvent::Ipc(IpcCommand::Stop, resp_tx))
+            .await
+            .unwrap();
+        task.await.unwrap();
     }
 }

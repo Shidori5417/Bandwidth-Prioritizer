@@ -50,6 +50,25 @@ pub struct AppConfig {
     /// Named profiles for quick switching (e.g. "gaming", "meeting").
     #[serde(default)]
     pub profiles: HashMap<String, ProfileConfig>,
+
+    /// Packet-shaping settings (experimental features are opt-in).
+    #[serde(default)]
+    pub shaping: ShapingConfig,
+}
+
+/// Settings for the packet-shaping backend.
+///
+/// Everything here defaults to *off*: the daemon never intercepts packets unless
+/// the user explicitly opts in.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ShapingConfig {
+    /// Enables the experimental WinDivert packet shaper (Windows only).
+    ///
+    /// Only honoured by a `bwp-engine` built with the `experimental-windivert` Cargo
+    /// feature, and only read at startup (changing it needs an engine restart). When
+    /// `false` (the default) no packet is ever captured.
+    #[serde(default)]
+    pub experimental_windivert: bool,
 }
 
 /// General daemon/runtime settings.
@@ -152,6 +171,7 @@ impl Default for AppConfig {
             ],
             default_throttle_limit_kbps: default_throttle_limit(),
             profiles: HashMap::new(),
+            shaping: ShapingConfig::default(),
         }
     }
 }
@@ -183,6 +203,17 @@ mod tests {
         assert_eq!(config.default_throttle_limit_kbps, 1000);
         assert_eq!(config.general.poll_interval_ms, 500);
         assert_eq!(config.throttle_limit_for_profile("gaming").as_kbps(), 500);
+    }
+
+    #[test]
+    fn shaping_is_off_by_default_and_parses() {
+        assert!(!AppConfig::default().shaping.experimental_windivert);
+        let config: AppConfig = toml::from_str("critical_apps = []").unwrap();
+        assert!(!config.shaping.experimental_windivert);
+        let config: AppConfig = toml::from_str("[shaping]\nexperimental_windivert = true").unwrap();
+        assert!(config.shaping.experimental_windivert);
+        let shipped: AppConfig = toml::from_str(include_str!("../../../config.toml")).unwrap();
+        assert!(!shipped.shaping.experimental_windivert);
     }
 
     #[test]
