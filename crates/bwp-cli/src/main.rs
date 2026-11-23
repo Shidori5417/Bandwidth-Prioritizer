@@ -136,15 +136,26 @@ async fn main() -> Result<()> {
                 let _ = command.creation_flags(CREATE_NO_WINDOW);
             }
 
-            match command.spawn() {
-                Ok(child) => {
-                    println!("✅ Daemon spawned successfully (PID: {}).", child.id());
-                }
-                Err(e) => {
-                    println!("❌ Failed to spawn daemon: {}", e);
-                    println!("Make sure 'bwp-engine.exe' is in your PATH or current directory.");
-                }
+            let mut child = command.spawn().with_context(|| {
+                format!(
+                    "failed to spawn {} (it must sit next to the bwp binary)",
+                    engine_path.display()
+                )
+            })?;
+
+            // The engine exits right away when it cannot run (e.g. on non-Windows
+            // hosts or with a broken config), so give it a moment before
+            // reporting success.
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            if let Some(status) = child
+                .try_wait()
+                .context("failed to query the engine process")?
+            {
+                anyhow::bail!(
+                    "bwp-engine exited immediately ({status}); run it in the foreground to see why"
+                );
             }
+            println!("✅ Daemon spawned successfully (PID: {}).", child.id());
         }
         CliCommand::Stop => {
             println!("🛑 Sending stop command to engine...");
