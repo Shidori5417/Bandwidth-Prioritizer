@@ -162,9 +162,11 @@ version = "0.1.0"
 dependencies = [
  "bwp-core",
  "serde",
+ "sysinfo",
  "thiserror",
  "tokio",
  "tracing",
+ "windows 0.61.3",
 ]
 
 [[package]]

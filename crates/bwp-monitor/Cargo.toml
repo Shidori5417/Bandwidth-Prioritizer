@@ -15,5 +15,9 @@ thiserror = { workspace = true }
 tracing = { workspace = true }
 tokio = { workspace = true }
 
+[target.'cfg(windows)'.dependencies]
+windows = { workspace = true }
+sysinfo = { version = "0.33", default-features = false, features = ["system"] }
+
 [lints]
 workspace = true

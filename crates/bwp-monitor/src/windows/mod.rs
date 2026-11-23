@@ -1,9 +1,10 @@
 //! Windows-specific process and network monitoring implementation.
 //!
-//! **Status: not implemented.** The design is hybrid (ETW real-time events with a
-//! `GetExtendedTcpTable` polling fallback), but the ETW listener always reports an
-//! error and the polling fallback returns empty snapshots, so no connection events
-//! are produced yet.
+//! The design is hybrid (ETW real-time events with a polling fallback). ETW is **not
+//! implemented**: its listener always reports an error, so the monitor always uses the
+//! polling path, which snapshots the TCP (IPv4 and IPv6) and UDP tables through
+//! `GetExtendedTcpTable` / `GetExtendedUdpTable` and diffs successive snapshots into
+//! connection events.
 
 mod etw;
 mod poll;
@@ -13,7 +14,7 @@ use bwp_core::{BwpResult, ConnectionInfo, MonitorEvent, ProcessInfo};
 use tokio::sync::mpsc;
 use tracing::{info, warn};
 
-/// Windows process monitor, implementing the hybrid ETW/Polling strategy.
+/// Windows process monitor (ETW is not implemented, so it polls the IP Helper tables).
 #[derive(Debug, Default)]
 pub struct WindowsMonitor {}
 
@@ -46,16 +47,21 @@ impl ProcessMonitor for WindowsMonitor {
     }
 
     async fn list_network_processes(&self) -> BwpResult<Vec<ProcessInfo>> {
-        // Delegate to the polling engine for static snapshots.
-        poll::snapshot_network_processes()
+        // The blocking Win32 calls and process lookups run off the async worker threads.
+        run_blocking(poll::snapshot_network_processes).await
     }
 
     async fn list_connections(&self) -> BwpResult<Vec<ConnectionInfo>> {
-        // Delegate to the polling engine for static snapshots.
-        poll::snapshot_connections()
+        run_blocking(poll::snapshot_connections).await
     }
 }
 
-// Ensure the module is properly structured and fails fast if not on windows.
-#[cfg(not(target_os = "windows"))]
-compile_error!("bwp-monitor's windows module should only be compiled on Windows targets.");
+pub use poll::snapshot_connections;
+
+async fn run_blocking<T: Send + 'static>(
+    job: impl FnOnce() -> BwpResult<T> + Send + 'static,
+) -> BwpResult<T> {
+    tokio::task::spawn_blocking(job)
+        .await
+        .map_err(|e| bwp_core::BwpError::Monitor(format!("snapshot task failed: {e}")))?
+}
