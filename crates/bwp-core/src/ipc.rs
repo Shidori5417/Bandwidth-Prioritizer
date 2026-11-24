@@ -170,17 +170,15 @@ pub mod linux {
     pub fn bind_server() -> Result<UnixListener> {
         let _ = std::fs::remove_file(SOCKET_PATH);
 
-        // Create a secure temporary directory to bind the socket in, mitigating TOCTOU vulnerabilities.
-        // `umask` affects the whole process (thread-unsafe), so creating a private directory is preferred.
-        let temp_dir_path = "/var/run/bwp_tmp_sock_dir";
-        let _ = std::fs::remove_dir_all(temp_dir_path);
-
-        std::fs::create_dir_all(temp_dir_path)?;
+        // Bind the socket inside a private temporary directory, then rename it into place.
+        // `umask` affects the whole process (thread-unsafe), so a private directory is preferred.
+        // The PID makes the path unpredictable, and `create_private_dir` refuses to reuse
+        // anything already at that path (including a planted symlink).
+        let temp_dir_path = format!("/var/run/bwp_sock_{}", std::process::id());
+        let _ = std::fs::remove_dir_all(&temp_dir_path);
+        create_private_dir(&temp_dir_path)?;
 
         use std::os::unix::fs::PermissionsExt;
-        let mut dir_perms = std::fs::metadata(temp_dir_path)?.permissions();
-        dir_perms.set_mode(0o700);
-        std::fs::set_permissions(temp_dir_path, dir_perms)?;
 
         let temp_socket_path = format!("{}/bwp.sock", temp_dir_path);
 
@@ -196,8 +194,56 @@ pub mod linux {
         std::fs::rename(&temp_socket_path, SOCKET_PATH)?;
 
         // Cleanup the temporary directory
-        let _ = std::fs::remove_dir(temp_dir_path);
+        let _ = std::fs::remove_dir(&temp_dir_path);
 
         Ok(listener)
+    }
+
+    /// Creates `path` as a new directory with mode 0700 in a single step.
+    ///
+    /// Unlike `create_dir_all` followed by `set_permissions`, this never leaves the
+    /// directory world-accessible, and it fails with `AlreadyExists` if anything,
+    /// such as a symlink planted by another user, already occupies the path.
+    pub(crate) fn create_private_dir(path: &str) -> Result<()> {
+        use std::os::unix::fs::DirBuilderExt;
+        std::fs::DirBuilder::new().mode(0o700).create(path)
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod tests {
+    use super::linux::create_private_dir;
+    use std::fs;
+    use std::os::unix::fs::{PermissionsExt, symlink};
+
+    #[test]
+    fn private_dir_is_created_with_mode_0700() {
+        let path = format!("/tmp/bwp_test_sock_{}", std::process::id());
+        let _ = fs::remove_dir_all(&path);
+
+        create_private_dir(&path).expect("directory should be created");
+
+        let metadata = fs::metadata(&path).unwrap();
+        assert!(metadata.is_dir());
+        assert_eq!(metadata.permissions().mode() & 0o777, 0o700);
+
+        fs::remove_dir_all(&path).unwrap();
+    }
+
+    #[test]
+    fn private_dir_refuses_existing_symlink() {
+        let target = format!("/tmp/bwp_test_target_{}", std::process::id());
+        let link = format!("/tmp/bwp_test_link_{}", std::process::id());
+        let _ = fs::remove_dir_all(&target);
+        let _ = fs::remove_file(&link);
+
+        fs::create_dir_all(&target).unwrap();
+        symlink(&target, &link).unwrap();
+
+        let err = create_private_dir(&link).expect_err("symlink must not be reused");
+        assert_eq!(err.kind(), std::io::ErrorKind::AlreadyExists);
+
+        let _ = fs::remove_dir_all(&target);
+        let _ = fs::remove_file(&link);
     }
 }
