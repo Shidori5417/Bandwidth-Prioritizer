@@ -310,4 +310,96 @@ mod tests {
         assert!(wait_for_settled(&mut rx, Duration::from_millis(10)).await);
         assert!(!wait_for_settled(&mut rx, Duration::from_millis(10)).await);
     }
+
+    /// A fresh, empty directory under the system temp dir for one test.
+    fn scratch_dir(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("bwp_{name}_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn new_or_default_falls_back_when_file_is_missing() {
+        let dir = scratch_dir("missing");
+        let manager = ConfigManager::new_or_default(dir.join("absent.toml"));
+        let config = manager.get_shared_config().load();
+        let default = AppConfig::default();
+
+        assert_eq!(
+            config.default_throttle_limit_kbps,
+            default.default_throttle_limit_kbps
+        );
+        assert_eq!(config.critical_apps, default.critical_apps);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn new_or_default_falls_back_on_invalid_toml() {
+        let dir = scratch_dir("invalid");
+        let path = dir.join("config.toml");
+        std::fs::write(&path, "invalid = [toml").unwrap();
+
+        let manager = ConfigManager::new_or_default(&path);
+        assert_eq!(
+            manager
+                .get_shared_config()
+                .load()
+                .default_throttle_limit_kbps,
+            AppConfig::default().default_throttle_limit_kbps
+        );
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn new_or_default_loads_valid_file() {
+        let dir = scratch_dir("valid");
+        let path = dir.join("config.toml");
+        std::fs::write(
+            &path,
+            "default_throttle_limit_kbps = 5000\ncritical_apps = [\"test_app\"]\n",
+        )
+        .unwrap();
+
+        let manager = ConfigManager::new_or_default(&path);
+        let config = manager.get_shared_config().load();
+        assert_eq!(config.default_throttle_limit_kbps, 5000);
+        assert_eq!(config.critical_apps, ["test_app"]);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn hot_reload_picks_up_file_changes() {
+        let dir = scratch_dir("hot_reload");
+        let path = dir.join("config.toml");
+        std::fs::write(&path, "default_throttle_limit_kbps = 1000\n").unwrap();
+
+        let manager = ConfigManager::new_or_default(&path);
+        assert_eq!(
+            manager
+                .get_shared_config()
+                .load()
+                .default_throttle_limit_kbps,
+            1000
+        );
+        let mut reloads = manager.subscribe_reloads();
+        manager.spawn_hot_reload_task();
+
+        // Give the watcher thread time to attach before editing the file.
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        std::fs::write(&path, "default_throttle_limit_kbps = 9999\n").unwrap();
+
+        tokio::time::timeout(Duration::from_secs(5), reloads.changed())
+            .await
+            .expect("config was not hot-reloaded within 5 seconds")
+            .unwrap();
+        assert_eq!(
+            manager
+                .get_shared_config()
+                .load()
+                .default_throttle_limit_kbps,
+            9999
+        );
+        let _ = std::fs::remove_dir_all(dir);
+    }
 }
