@@ -1,5 +1,5 @@
 //! Bandwidth-Prioritizer CLI Frontend
-//! 
+//!
 //! Provides a `clap`-based CLI and `ratatui` UI for managing the `bwp-engine` daemon via IPC.
 
 use anyhow::{Context, Result};
@@ -8,8 +8,8 @@ use tracing_subscriber::EnvFilter;
 
 use bwp_core::ipc::{IpcCommand, IpcResponse};
 
-mod tui;
 mod service;
+mod tui;
 
 #[cfg(target_os = "windows")]
 use bwp_core::ipc::windows::connect_client;
@@ -33,33 +33,34 @@ struct CliArgs {
 enum CliCommand {
     /// Start the bandwidth prioritizer daemon in the background.
     Start,
-    
+
     /// Stop the running bandwidth prioritizer daemon.
     Stop,
-    
+
     /// Show current status (active rules, throttle state, throttled PIDs).
     Status,
-    
+
     /// Open the real-time TUI dashboard.
     Top,
-    
+
     /// Switch to a named profile from the config.
     Set {
         /// Profile name (e.g. "gaming", "meeting").
         profile: String,
     },
-    
+
     /// Add an application to the priority whitelist dynamically.
     Add {
         /// Process name to add (e.g. "discord.exe").
         app: String,
     },
-    
+
+    /// Remove an application from the priority whitelist dynamically.
     Remove {
         /// Process name to remove.
         app: String,
     },
-    
+
     /// Manage the background daemon as a persistent OS service.
     Service {
         #[command(subcommand)]
@@ -91,7 +92,9 @@ cfg_if::cfg_if! {
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("warn")))
+        .with_env_filter(
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("warn")),
+        )
         .with_target(false)
         .without_time()
         .init();
@@ -100,6 +103,15 @@ async fn main() -> Result<()> {
 
     match args.command {
         CliCommand::Start => {
+            // The engine only runs on Windows; the Linux binary is a stub that exits with an
+            // error. Do not spawn it and race its exit against a timer.
+            if !cfg!(windows) {
+                anyhow::bail!(
+                    "the bwp-engine daemon only runs on Windows; this host is unsupported \
+                     (the Linux build exists for development and CI only)"
+                );
+            }
+
             if let Ok(Some(pid)) = bwp_core::pid::read_pid() {
                 if bwp_core::pid::is_process_running(pid) {
                     println!("Engine is already running (PID: {})", pid);
@@ -112,30 +124,47 @@ async fn main() -> Result<()> {
             }
 
             // Locate engine binary relative to CLI binary (same build directory)
+            let engine_file = if cfg!(windows) {
+                "bwp-engine.exe"
+            } else {
+                "bwp-engine"
+            };
             let engine_path = std::env::current_exe()
                 .ok()
-                .and_then(|p| p.parent().map(|d| d.join("bwp-engine.exe")))
-                .unwrap_or_else(|| std::path::PathBuf::from("bwp-engine"));
+                .and_then(|p| p.parent().map(|d| d.join(engine_file)))
+                .unwrap_or_else(|| std::path::PathBuf::from(engine_file));
 
             let mut command = std::process::Command::new(&engine_path);
-            let _ = command.stdin(std::process::Stdio::null())
-                   .stdout(std::process::Stdio::null())
-                   .stderr(std::process::Stdio::null());
+            let _ = command
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null());
 
             #[cfg(target_os = "windows")]
             {
                 let _ = command.creation_flags(CREATE_NO_WINDOW);
             }
 
-            match command.spawn() {
-                Ok(child) => {
-                    println!("✅ Daemon spawned successfully (PID: {}).", child.id());
-                }
-                Err(e) => {
-                    println!("❌ Failed to spawn daemon: {}", e);
-                    println!("Make sure 'bwp-engine.exe' is in your PATH or current directory.");
-                }
+            let mut child = command.spawn().with_context(|| {
+                format!(
+                    "failed to spawn {} (it must sit next to the bwp binary)",
+                    engine_path.display()
+                )
+            })?;
+
+            // The engine exits right away when it cannot run (e.g. on non-Windows
+            // hosts or with a broken config), so give it a moment before
+            // reporting success.
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            if let Some(status) = child
+                .try_wait()
+                .context("failed to query the engine process")?
+            {
+                anyhow::bail!(
+                    "bwp-engine exited immediately ({status}); run it in the foreground to see why"
+                );
             }
+            println!("✅ Daemon spawned successfully (PID: {}).", child.id());
         }
         CliCommand::Stop => {
             println!("🛑 Sending stop command to engine...");
@@ -146,7 +175,10 @@ async fn main() -> Result<()> {
                 }
                 Err(_) => {
                     if let Ok(Some(pid)) = bwp_core::pid::read_pid() {
-                        println!("Could not connect to stop gracefully. You may need to manually kill PID {}.", pid);
+                        println!(
+                            "Could not connect to stop gracefully. You may need to manually kill PID {}.",
+                            pid
+                        );
                         bwp_core::pid::remove_pid().unwrap_or(());
                     } else {
                         println!("Engine does not appear to be running.");
@@ -173,15 +205,13 @@ async fn main() -> Result<()> {
             println!("➖ Removing '{}' from priority whitelist...", app);
             send_ipc_and_print(IpcCommand::RemoveApp(app)).await?;
         }
-        CliCommand::Service { action } => {
-            match action {
-                ServiceAction::Install => service::install()?,
-                ServiceAction::Uninstall => service::uninstall()?,
-                ServiceAction::Start => service::start()?,
-                ServiceAction::Stop => service::stop()?,
-                ServiceAction::Status => service::status()?,
-            }
-        }
+        CliCommand::Service { action } => match action {
+            ServiceAction::Install => service::install()?,
+            ServiceAction::Uninstall => service::uninstall()?,
+            ServiceAction::Start => service::start()?,
+            ServiceAction::Stop => service::stop()?,
+            ServiceAction::Status => service::status()?,
+        },
     }
 
     Ok(())
@@ -189,21 +219,39 @@ async fn main() -> Result<()> {
 
 async fn send_ipc_and_print(command: IpcCommand) -> Result<()> {
     // Attempt connection
-    let mut conn = connect_client().await.context("Failed to connect to bwp-engine. Is the daemon running?")?;
-    
-    conn.send_command(&command).await.context("Failed to send command to daemon")?;
-    
-    match conn.recv_response().await.context("Failed to receive response from daemon")? {
+    let mut conn = connect_client()
+        .await
+        .context("Failed to connect to bwp-engine. Is the daemon running?")?;
+
+    conn.send_command(&command)
+        .await
+        .context("Failed to send command to daemon")?;
+
+    match conn
+        .recv_response()
+        .await
+        .context("Failed to receive response from daemon")?
+    {
         Some(IpcResponse::Ok) => {
             println!("✅ Success.");
         }
         Some(IpcResponse::Error(err)) => {
             println!("❌ Engine Error: {}", err);
         }
-        Some(IpcResponse::StatusPayload { state, active_profile, throttled_pids_count, priority_pids_count, current_limit_kbps, .. }) => {
+        Some(IpcResponse::StatusPayload {
+            state,
+            active_profile,
+            throttled_pids_count,
+            priority_pids_count,
+            current_limit_kbps,
+            ..
+        }) => {
             println!("\n--- Engine Status ---");
             println!("State Mode        : {}", state);
-            println!("Active Profile    : {}", active_profile.as_deref().unwrap_or("None"));
+            println!(
+                "Active Profile    : {}",
+                active_profile.as_deref().unwrap_or("None")
+            );
             println!("Priority PIDs     : {}", priority_pids_count);
             println!("Throttled PIDs    : {}", throttled_pids_count);
             println!("Enforced Limit    : {} Kbps", current_limit_kbps);
@@ -213,23 +261,25 @@ async fn send_ipc_and_print(command: IpcCommand) -> Result<()> {
             println!("⚠️ Connection closed by daemon before response.");
         }
     }
-    
+
     Ok(())
 }
 
 /// Sends Stop to engine; treats both Ok and EOF (pipe close) as success.
 /// Uses a short timeout so CLI doesn't hang if engine is unresponsive.
 async fn stop_engine() -> Result<()> {
-    let mut conn = connect_client().await.context("Failed to connect to bwp-engine. Is the daemon running?")?;
-    conn.send_command(&IpcCommand::Stop).await.context("Failed to send Stop command")?;
-    
+    let mut conn = connect_client()
+        .await
+        .context("Failed to connect to bwp-engine. Is the daemon running?")?;
+    conn.send_command(&IpcCommand::Stop)
+        .await
+        .context("Failed to send Stop command")?;
+
     // Engine may close the pipe before sending a response (race between break + flush).
     // Either Ok(Some(Ok)) or Ok(None) [EOF] is fine — engine is shutting down.
-    let result = tokio::time::timeout(
-        std::time::Duration::from_secs(3),
-        conn.recv_response(),
-    ).await;
-    
+    let result =
+        tokio::time::timeout(std::time::Duration::from_secs(3), conn.recv_response()).await;
+
     match result {
         Ok(Ok(_)) | Err(_) => Ok(()), // response received OR timeout (engine already dead)
         Ok(Err(e)) => Err(e.into()),

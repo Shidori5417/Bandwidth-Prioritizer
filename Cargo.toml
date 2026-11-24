@@ -45,7 +45,6 @@ notify = "7"
 
 # Internal crates
 bwp-core = { path = "crates/bwp-core" }
-bwp-engine = { path = "crates/bwp-engine" }
 bwp-monitor = { path = "crates/bwp-monitor" }
 bwp-controller = { path = "crates/bwp-controller" }
 
@@ -63,13 +62,9 @@ windows-service = "0.7"
 
 [workspace.lints.rust]
 unsafe_code = "deny"
-unused_results = "warn"
 missing_docs = "warn"
 
 [workspace.lints.clippy]
 all = { level = "warn", priority = -1 }
-pedantic = { level = "warn", priority = -1 }
-nursery = { level = "warn", priority = -1 }
 unwrap_used = "warn"
 expect_used = "warn"
-cargo = { level = "warn", priority = -1 }

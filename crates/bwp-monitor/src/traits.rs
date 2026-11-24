@@ -4,7 +4,7 @@
 //! (Linux, Windows) must satisfy. This enables clean dependency inversion
 //! and makes testing with mocks straightforward.
 
-use bwp_core::{BwpResult, ConnectionInfo, ProcessInfo, MonitorEvent};
+use bwp_core::{BwpResult, ConnectionInfo, MonitorEvent, ProcessInfo};
 use tokio::sync::mpsc;
 
 /// Trait for monitoring running processes and their network connections.
@@ -14,7 +14,7 @@ use tokio::sync::mpsc;
 #[allow(async_fn_in_trait)]
 pub trait ProcessMonitor: Send + Sync {
     /// Spawns the monitor task and returns a channel receiver yielding real-time
-    /// connection events. If the platform does not support events (or fails), 
+    /// connection events. If the platform does not support events (or fails),
     /// it may fall back to generating these events via polling.
     async fn watch_connections(&self) -> BwpResult<mpsc::Receiver<MonitorEvent>>;
     /// Returns a snapshot of all currently running processes with active
@@ -34,18 +34,11 @@ pub trait ProcessMonitor: Send + Sync {
     }
 
     /// Returns all processes whose names match any entry in the given list.
-    async fn find_matching_processes(
-        &self,
-        names: &[String],
-    ) -> BwpResult<Vec<ProcessInfo>> {
+    async fn find_matching_processes(&self, names: &[String]) -> BwpResult<Vec<ProcessInfo>> {
         let processes = self.list_network_processes().await?;
         Ok(processes
             .into_iter()
-            .filter(|p| {
-                names
-                    .iter()
-                    .any(|n| p.name.eq_ignore_ascii_case(n))
-            })
+            .filter(|p| names.iter().any(|n| p.name.eq_ignore_ascii_case(n)))
             .collect())
     }
 }

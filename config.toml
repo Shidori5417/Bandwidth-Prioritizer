@@ -1,8 +1,28 @@
 # Bandwidth-Prioritizer default configuration
 # ─────────────────────────────────────────────
 
+# NOTE: top-level keys must come before the first [table] header.
+# ─── Critical Applications ──────────────────
+# Processes listed here are considered "priority".
+# When any of them are active, all OTHER processes
+# get their bandwidth throttled.
+# Matching is case-insensitive and ignores a trailing ".exe".
+critical_apps = [
+    "discord",
+    "zoom",
+    "code",           # VS Code
+    "teams",          # Microsoft Teams
+    "slack",
+]
+
+# ─── Default Throttle Limit ─────────────────
+# Bandwidth cap applied to non-critical processes (in Kbps).
+# 1000 Kbps = 1 Mbps
+default_throttle_limit_kbps = 1000
+
 [general]
-# Process monitor polling interval (milliseconds)
+# Process monitor polling interval (milliseconds). Read once at startup: restart the
+# engine after changing it (the other settings are hot-reloaded).
 poll_interval_ms = 500
 
 # Log verbosity: trace, debug, info, warn, error
@@ -11,27 +31,13 @@ log_level = "info"
 # Optional: log file path (omit for stdout only)
 # log_file = "bwp.log"
 
-# ─── Critical Applications ──────────────────
-# Processes listed here are considered "priority".
-# When any of them are active, all OTHER processes
-# get their bandwidth throttled.
-critical_apps = [
-    "discord",
-    "Discord",
-    "zoom",
-    "Zoom",
-    "code",           # VS Code
-    "Code",
-    "teams",          # Microsoft Teams
-    "Teams",
-    "slack",
-    "Slack",
-]
-
-# ─── Default Throttle Limit ─────────────────
-# Bandwidth cap applied to non-critical processes (in Kbps).
-# 1000 Kbps = 1 Mbps
-default_throttle_limit_kbps = 1000
+# ─── Packet shaping (EXPERIMENTAL) ──────────
+# Off by default: without it no packet is ever captured and nothing is limited.
+# Turning it on needs a bwp-engine built with the `experimental-windivert` feature
+# (zip name ending in "-windivert"), Administrator rights, and WinDivert.dll +
+# WinDivert64.sys next to bwp-engine.exe. Read at startup; restart the engine to apply.
+[shaping]
+experimental_windivert = false
 
 # ─── Profiles ───────────────────────────────
 # Named presets for quick switching via `bwp profile <name>`.

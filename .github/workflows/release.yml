@@ -30,13 +30,14 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Build and Package with build_release.ps1
+        id: package
         run: |
-          # PowerShell betiğini çalıştır
+          # Run the packaging script
           .\build_release.ps1
         shell: powershell
 
       - name: Upload Zip Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: bwp-windows-v1.0.0
-          path: target/bwp-windows-v1.0.0.zip
+          name: bwp-windows-v${{ steps.package.outputs.version }}
+          path: ${{ steps.package.outputs.zip_path }}
