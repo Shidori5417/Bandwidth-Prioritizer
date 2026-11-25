@@ -1,0 +1,10 @@
+# Read by github.com/Shidori5417 (profile README) and the portfolio site.
+# Edit when the project's state changes; no need to touch it otherwise.
+# status: active | prototype | released | maintenance | paused | archived
+status: prototype
+focus:
+  en: "Linux build fixed, config hot reload and IPC hardening done; packet shaping is still experimental."
+  tr: "Linux derlemesi düzeltildi, config sıcak yükleme ve IPC güvenliği tamamlandı; paket şekillendirme hâlâ deneysel."
+note:
+  en: "Prototype: the default build does not shape traffic, and the WinDivert backend is opt-in and not yet tested on real Windows. Linux builds exist for development and CI; the tc htb controller is not implemented yet."
+  tr: "Prototip: varsayılan derleme trafiği şekillendirmez, WinDivert arka ucu isteğe bağlı ve gerçek Windows'ta henüz test edilmedi. Linux derlemesi geliştirme ve CI içindir; tc htb denetleyicisi henüz yok."
