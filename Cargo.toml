@@ -29,7 +29,7 @@ toml = "0.8"
 clap = { version = "4", features = ["derive"] }
 
 # TUI
-ratatui = "0.29"
+ratatui = "0.30"
 crossterm = "0.28"
 
 # Logging & Tracing
@@ -41,7 +41,7 @@ thiserror = "2"
 anyhow = "1"
 
 # File watching (hot-reload)
-notify = "7"
+notify = "8"
 
 # Internal crates
 bwp-core = { path = "crates/bwp-core" }

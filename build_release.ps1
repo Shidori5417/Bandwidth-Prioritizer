@@ -69,7 +69,8 @@ $FilesToPackage = @(
     "target\release\bwp-engine.exe",
     "config.toml",
     "README.md",
-    "LICENSE-MIT"
+    "LICENSE-MIT",
+    "LICENSE-APACHE"
 )
 
 foreach ($File in $FilesToPackage) {
@@ -78,7 +79,7 @@ foreach ($File in $FilesToPackage) {
         Copy-Item -Path $SourcePath -Destination $ReleaseDir -Force
         Write-Host "  v Copied $File" -ForegroundColor Green
     } else {
-        Write-Host "  x Missing file: $File" -ForegroundColor Red
+        throw "Missing file: $File"
     }
 }
 
