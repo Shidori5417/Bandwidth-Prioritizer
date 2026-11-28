@@ -34,7 +34,7 @@ jobs:
         os: [ubuntu-latest, windows-latest]
         rust: [stable, nightly]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # The experimental-windivert feature (enabled by --all-features) links against the
       # official WinDivert SDK; fetch it, verified by checksum, on the Windows legs.
@@ -84,8 +84,13 @@ jobs:
   security-audit:
     name: Security Audit
     runs-on: ubuntu-latest
+    # rustsec/audit-check, check run oluşturmak için checks: write ister; yoksa
+    # "Resource not accessible by integration" ile başarısız olur.
+    permissions:
+      contents: read
+      checks: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: rustsec/audit-check@v2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
